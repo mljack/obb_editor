@@ -59,7 +59,7 @@ public:
         glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
         if (!success) {
             glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-            printf("ERROR::SHADER::VERTEX::COMPILATION_FAILED: %s\n", infoLog);
+            printf("ERROR::SHADER::FRAGMENT::COMPILATION_FAILED: %s\n", infoLog);
             return 0;
         }
         // Link shaders
@@ -106,12 +106,17 @@ public:
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0])*indices.size(), indices.data(), GL_STATIC_DRAW);
 
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
+        // position attribute
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(GLfloat), (GLvoid*)0);
         glEnableVertexAttribArray(0);
 
-        // texture coord attribute
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+        // color attribute
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(3* sizeof(float)));
         glEnableVertexAttribArray(1);
+
+        // texture coord attribute
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(7 * sizeof(float)));
+        glEnableVertexAttribArray(2);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         n_indices_ = (GLsizei)indices.size();
@@ -136,22 +141,20 @@ private:
 };
 
 unsigned int load_texture(const char* file_path) {
-    // load and create a texture 
-    // -------------------------
     unsigned int texture;
     glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
-    // set the texture wrapping parameters
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	// set texture wrapping to GL_REPEAT (default wrapping method)
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    // set texture filtering parameters
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // load image, create texture and generate mipmaps
+
     int width, height, nrChannels;
-    // The FileSystem::getPath(...) is part of the GitHub repository so we can find files on any IDE/platform; replace it with your own image path.
+    printf("[%s]\n", file_path);
     unsigned char *data = stbi_load(file_path, &width, &height, &nrChannels, 0);
     if (data) {
+        printf("[%d x %d], %d\n", width, height, nrChannels);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
     } else {
@@ -267,15 +270,16 @@ int main(int, char**)
     if (!g_material->build(vertexShaderSource, fragmentShaderSource))
         return -1;
 
-    const float base_x = 0.0f;
-    const float base_y = 0.0f;
-    const float w = 0.5f;
-    const float h = 0.5f;
+    const float base_x = -0.5f;
+    const float base_y = -0.5f;
+    const float w = 1.0f;
+    const float h = 1.0f;
     std::vector<GLfloat> vertices2 = {
-        base_x  , base_y  , 0.0f, 0.0f, 0.0f,
-        base_x+w, base_y  , 0.0f, 1.0f, 0.0f,
-        base_x+w, base_y+h, 0.0f, 1.0f, 1.0f,
-        base_x  , base_y+h, 0.0f, 0.0f, 1.0f,
+        // x        y        z     r     g     b     a     u     v
+        base_x  , base_y  , 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+        base_x+w, base_y  , 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+        base_x+w, base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f,
+        base_x  , base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
     };
     std::vector<GLuint> indices2 = {
         0, 1, 2, 0, 2, 3
@@ -285,7 +289,11 @@ int main(int, char**)
     rect.set_material(g_material);
     rect.update_buffers(vertices2, indices2);
 
+#if defined(__EMSCRIPTEN__)
+    unsigned int texture_id = load_texture("/resources/cat.jpg");
+#else
     unsigned int texture_id = load_texture("../resources/cat.jpg");
+#endif
 
     // Our state
     bool show_demo_window = true;

@@ -63,6 +63,7 @@ if(EMSCRIPTEN)
         -sUSE_WEBGL2=1
         -sFORCE_FILESYSTEM
         -sEXPORTED_RUNTIME_METHODS=ccall
+        --preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/cat.jpg@/resources/cat.jpg
         --shell-file=${CMAKE_CURRENT_LIST_DIR}/resources/shell_minimal.html
     )
 
