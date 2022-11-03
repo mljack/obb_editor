@@ -139,10 +139,9 @@ public:
         glm::mat4 view(1.0f);
         //glm::mat4 proj(1.0f);
         model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        view = glm::translate(view, glm::vec3(0.0f, 0.0f, -10.0f));
-        //glm::mat4 proj = glm::ortho(0.0f, (float)WINDOW_WIDTH, 0.0f, (float)WINDOW_HEIGHT);
-        //glm::mat4 proj = glm::ortho(-(float)WINDOW_WIDTH, (float)WINDOW_WIDTH, -(float)WINDOW_HEIGHT, (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
-        glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
+        view = glm::translate(view, glm::vec3(30.0f, 0.0f, 0.0f));
+        glm::mat4 proj = glm::ortho(0.0f, (float)WINDOW_WIDTH, 0.0f, (float)WINDOW_HEIGHT, -1000.0f, 1000.0f);
+        //glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
       
         material_->use();
         material_->set_transform(proj, view, model);
@@ -295,14 +294,14 @@ int main(int, char**)
 
     const float base_x = 0.0f;
     const float base_y = 0.0f;
-    const float w = 1.0f;
-    const float h = 1.0f;
+    const float w = 800.0f;
+    const float h = 800.0f;
     std::vector<GLfloat> vertices2 = {
         // x        y        z     r     g     b     a     u     v
-        base_x-w, base_y-h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-        base_x+w, base_y-h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+        base_x  , base_y  , 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+        base_x+w, base_y  , 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
         base_x+w, base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f,
-        base_x-w, base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        base_x  , base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
     };
     std::vector<GLuint> indices2 = {
         0, 1, 2, 0, 2, 3
