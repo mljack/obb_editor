@@ -37,6 +37,7 @@ add_executable(obb_editor
 include_directories(
     ${SDL2_INCLUDE_DIRS}
     third_party
+    third_party/glm
     third_party/imgui
     third_party/imgui/backends
 )

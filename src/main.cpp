@@ -17,6 +17,10 @@
 #include <imgui_impl_sdl.h>
 #include <imgui_impl_opengl3.h>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 #include <portable-file-dialogs.h>
@@ -78,11 +82,12 @@ public:
         glDeleteShader(fragmentShader);
         return true;
     }
-    void bind() {
+    void use() {
         glUseProgram(shader_prog_);
     }
-    void unbind() {
-
+    void set_transform(const glm::mat4& xform) {
+        unsigned int transform_uniform = glGetUniformLocation(shader_prog_, "transform");
+        glUniformMatrix4fv(transform_uniform, 1, GL_FALSE, glm::value_ptr(xform));
     }
 private:
     GLuint shader_prog_;
@@ -123,7 +128,13 @@ public:
     }
     void render() {
         assert(material_);
-        material_->bind();
+
+        glm::mat4 transform = glm::mat4(1.0f);
+        transform = glm::translate(transform, glm::vec3(0.3f, 0.0f, 0.0f));
+        transform = glm::rotate(transform, glm::radians(30.0f), glm::vec3(0.0f, 0.0f, 1.0f));        
+        material_->use();
+        material_->set_transform(transform);
+
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
         glDrawElements(primitive_type_, n_indices_, GL_UNSIGNED_INT, 0);
