@@ -37,6 +37,8 @@ static std::function<void()> loop;
 static void main_loop() { loop(); }
 #endif
 
+const int WINDOW_WIDTH = 800;
+const int WINDOW_HEIGHT = 800;
 
 class Material {
 public:
@@ -85,9 +87,13 @@ public:
     void use() {
         glUseProgram(shader_prog_);
     }
-    void set_transform(const glm::mat4& xform) {
-        unsigned int transform_uniform = glGetUniformLocation(shader_prog_, "transform");
-        glUniformMatrix4fv(transform_uniform, 1, GL_FALSE, glm::value_ptr(xform));
+    void set_transform(const glm::mat4& proj, const glm::mat4& view, const glm::mat4& model) {
+        unsigned int proj_uniform = glGetUniformLocation(shader_prog_, "proj");
+        glUniformMatrix4fv(proj_uniform, 1, GL_FALSE, glm::value_ptr(proj));
+        unsigned int view_uniform = glGetUniformLocation(shader_prog_, "view");
+        glUniformMatrix4fv(view_uniform, 1, GL_FALSE, glm::value_ptr(view));
+        unsigned int model_uniform = glGetUniformLocation(shader_prog_, "model");
+        glUniformMatrix4fv(model_uniform, 1, GL_FALSE, glm::value_ptr(model));
     }
 private:
     GLuint shader_prog_;
@@ -129,11 +135,17 @@ public:
     void render() {
         assert(material_);
 
-        glm::mat4 transform = glm::mat4(1.0f);
-        transform = glm::translate(transform, glm::vec3(0.3f, 0.0f, 0.0f));
-        transform = glm::rotate(transform, glm::radians(30.0f), glm::vec3(0.0f, 0.0f, 1.0f));        
+        glm::mat4 model(1.0f);
+        glm::mat4 view(1.0f);
+        //glm::mat4 proj(1.0f);
+        model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        view = glm::translate(view, glm::vec3(0.0f, 0.0f, -10.0f));
+        //glm::mat4 proj = glm::ortho(0.0f, (float)WINDOW_WIDTH, 0.0f, (float)WINDOW_HEIGHT);
+        //glm::mat4 proj = glm::ortho(-(float)WINDOW_WIDTH, (float)WINDOW_WIDTH, -(float)WINDOW_HEIGHT, (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
+        glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
+      
         material_->use();
-        material_->set_transform(transform);
+        material_->set_transform(proj, view, model);
 
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
@@ -241,7 +253,7 @@ int main(int, char**)
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, window_flags);
+    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, window_flags);
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
     SDL_GL_SetSwapInterval(1); // Enable vsync
@@ -281,16 +293,16 @@ int main(int, char**)
     if (!g_material->build(vertexShaderSource, fragmentShaderSource))
         return -1;
 
-    const float base_x = -0.5f;
-    const float base_y = -0.5f;
+    const float base_x = 0.0f;
+    const float base_y = 0.0f;
     const float w = 1.0f;
     const float h = 1.0f;
     std::vector<GLfloat> vertices2 = {
         // x        y        z     r     g     b     a     u     v
-        base_x  , base_y  , 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-        base_x+w, base_y  , 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+        base_x-w, base_y-h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
+        base_x+w, base_y-h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
         base_x+w, base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f,
-        base_x  , base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        base_x-w, base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
     };
     std::vector<GLuint> indices2 = {
         0, 1, 2, 0, 2, 3
@@ -383,7 +395,7 @@ int main(int, char**)
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         //printf("[%d x %d]\n", (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
         //glEnable(GL_DEPTH_TEST);
         glBindTexture(GL_TEXTURE_2D, texture_id);
