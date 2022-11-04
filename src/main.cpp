@@ -37,9 +37,6 @@ static std::function<void()> loop;
 static void main_loop() { loop(); }
 #endif
 
-const int WINDOW_WIDTH = 800;
-const int WINDOW_HEIGHT = 800;
-
 class Material {
 public:
     bool build(const GLchar* vertexShaderSource, const GLchar* fragmentShaderSource) {
@@ -87,13 +84,9 @@ public:
     void use() {
         glUseProgram(shader_prog_);
     }
-    void set_transform(const glm::mat4& proj, const glm::mat4& view, const glm::mat4& model) {
-        unsigned int proj_uniform = glGetUniformLocation(shader_prog_, "proj");
-        glUniformMatrix4fv(proj_uniform, 1, GL_FALSE, glm::value_ptr(proj));
-        unsigned int view_uniform = glGetUniformLocation(shader_prog_, "view");
-        glUniformMatrix4fv(view_uniform, 1, GL_FALSE, glm::value_ptr(view));
-        unsigned int model_uniform = glGetUniformLocation(shader_prog_, "model");
-        glUniformMatrix4fv(model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+    void set_transform(const glm::mat4& xform) {
+        unsigned int xform_uniform = glGetUniformLocation(shader_prog_, "xform");
+        glUniformMatrix4fv(xform_uniform, 1, GL_FALSE, glm::value_ptr(xform));
     }
 private:
     GLuint shader_prog_;
@@ -132,19 +125,11 @@ public:
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         n_indices_ = (GLsizei)indices.size();
     }
-    void render() {
+    void render(const glm::mat4& xform) {
         assert(material_);
 
-        glm::mat4 model(1.0f);
-        glm::mat4 view(1.0f);
-        //glm::mat4 proj(1.0f);
-        model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        view = glm::translate(view, glm::vec3(30.0f, 0.0f, 0.0f));
-        glm::mat4 proj = glm::ortho(0.0f, (float)WINDOW_WIDTH, 0.0f, (float)WINDOW_HEIGHT, -1000.0f, 1000.0f);
-        //glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
-      
         material_->use();
-        material_->set_transform(proj, view, model);
+        material_->set_transform(xform);
 
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
@@ -162,14 +147,68 @@ private:
     Material *material_;
 };
 
+const int WINDOW_WIDTH = 800;
+const int WINDOW_HEIGHT = 800;
+float g_scale = 1.0;
+float g_offset_x = 0.0;
+float g_offset_y = 0.0;
+float g_offset_dx = 0.0;
+float g_offset_dy = 0.0;
+int g_drag_x = -1;
+int g_drag_y = -1;
+
+void handle_mouse_down_event(const SDL_Event& e) {
+    if (e.button.button == SDL_BUTTON_LEFT) {
+        g_drag_x = e.button.x;
+        g_drag_y = e.button.y;
+    } else if (e.button.button == SDL_BUTTON_RIGHT) {
+
+    }
+}
+
+void handle_mouse_up_event(const SDL_Event& e) {
+    if (e.button.button == SDL_BUTTON_LEFT) {
+        g_offset_x += g_offset_dx;
+        g_offset_y += g_offset_dy;
+        g_offset_dx = 0;
+        g_offset_dy = 0;
+        g_drag_x = -1;
+        g_drag_y = -1;
+    } else if (e.button.button == SDL_BUTTON_RIGHT) {
+
+    }
+}
+
+void handle_mouse_move_event(const SDL_Event& e) {
+    printf("mouse: [%d, %d]\n", e.motion.x, e.motion.y);
+    if (g_drag_x >= 0) {
+        g_offset_dx = e.button.x - g_drag_x;
+        g_offset_dy = -(e.button.y - g_drag_y);
+    }
+}
+
+void handle_mouse_wheel_event(const SDL_Event& e) {
+#if defined(__EMSCRIPTEN__)
+    printf("wheel [%d][%d][%d, %d][%f, %f]\n", e.wheel.timestamp, e.wheel.direction, e.wheel.x, e.wheel.y, e.wheel.preciseX, e.wheel.preciseY);
+    bool up = e.wheel.preciseY > 0;
+#else
+    bool up = e.wheel.y > 0;
+#endif
+
+    float s = 1.05f;
+    if (!up)
+        s = 1.0f / s;
+    g_scale = std::min(200.0f, std::max(1.0f/200.0f, g_scale*s));
+}
+
 unsigned int load_texture(const char* file_path) {
     unsigned int texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     int width, height, nrChannels;
     printf("[%s]\n", file_path);
@@ -252,7 +291,7 @@ int main(int, char**)
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    SDL_Window* window = SDL_CreateWindow("Dear ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, window_flags);
+    SDL_Window* window = SDL_CreateWindow("obb_editor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, window_flags);
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
     SDL_GL_SetSwapInterval(1); // Enable vsync
@@ -345,8 +384,16 @@ int main(int, char**)
             ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT)
                 done = true;
-            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
+            else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
                 done = true;
+            else if (event.type == SDL_MOUSEBUTTONDOWN)
+                handle_mouse_down_event(event);
+            else if (event.type == SDL_MOUSEBUTTONUP)
+                handle_mouse_up_event(event);
+            else if (event.type == SDL_MOUSEWHEEL)
+                handle_mouse_wheel_event(event);
+            else if (event.type == SDL_MOUSEMOTION)
+                handle_mouse_move_event(event);
         }
 
         // Start the Dear ImGui frame
@@ -395,10 +442,20 @@ int main(int, char**)
         //printf("[%d x %d]\n", (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
 
-        //glEnable(GL_DEPTH_TEST);
+        glm::mat4 model(1.0);
+        glm::mat4 view(1.0);
+        //model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        view = glm::translate(view, glm::vec3(g_offset_x + g_offset_dx, g_offset_y + g_offset_dy, 0.0f));
+        model = glm::scale(model, glm::vec3(g_scale, g_scale, 1.0));
+        glm::mat4 proj = glm::ortho(0.0f, (float)WINDOW_WIDTH, 0.0f, (float)WINDOW_HEIGHT, -1000.0f, 1000.0f);
+        //glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
+
+
         glBindTexture(GL_TEXTURE_2D, texture_id);
-        rect.render();
+        glm::mat4 xform = proj * view * model;
+        rect.render(xform);
 
         // Rendering GUI
         ImGui::Render();

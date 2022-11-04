@@ -5,14 +5,12 @@ in vec3 position;
 in vec4 inputColor;
 in vec2 aTexCoord;
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 proj;
+uniform mat4 xform;
 
 out vec4 color;
 out vec2 TexCoord;
 void main() {
-    gl_Position = proj * view * model * vec4(position, 1.0);
+    gl_Position = xform * vec4(position, 1.0);
     TexCoord = vec2(aTexCoord.x, aTexCoord.y);
     color = inputColor;
 }
