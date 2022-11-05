@@ -25,6 +25,9 @@
 #include <stb_image.h>
 #include <portable-file-dialogs.h>
 #include "shaders.h"
+#include "material.h"
+#include "render_item.h"
+#include "texture.h"
 
 #if defined(__EMSCRIPTEN__)
 // Emscripten wants to run the mainloop because of the way the browser is single threaded.
@@ -37,125 +40,19 @@ static std::function<void()> loop;
 static void main_loop() { loop(); }
 #endif
 
-class Material {
-public:
-    bool build(const GLchar* vertexShaderSource, const GLchar* fragmentShaderSource) {
-        // Build and compile our shader program
-        // Vertex shader
-        GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-        glCompileShader(vertexShader);
-        // Check for compile time errors
-        GLint success;
-        GLchar infoLog[512];
-        glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
-        if (!success) {
-            glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-            printf("ERROR::SHADER::VERTEX::COMPILATION_FAILED: %s\n", infoLog);
-            return 0;
-        }
-        // Fragment shader
-        GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-        glCompileShader(fragmentShader);
-        // Check for compile time errors
-        glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-        if (!success) {
-            glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-            printf("ERROR::SHADER::FRAGMENT::COMPILATION_FAILED: %s\n", infoLog);
-            return 0;
-        }
-        // Link shaders
-        shader_prog_ = glCreateProgram();
-        glAttachShader(shader_prog_, vertexShader);
-        glAttachShader(shader_prog_, fragmentShader);
-        glLinkProgram(shader_prog_);
-        // Check for linking errors
-        glGetProgramiv(shader_prog_, GL_LINK_STATUS, &success);
-        if (!success) {
-            glGetProgramInfoLog(shader_prog_, 512, NULL, infoLog);
-            printf("ERROR::PROGRAM::LINK_FAILED: %s\n", infoLog);
-            return 0;
-        }
-        glDeleteShader(vertexShader);
-        glDeleteShader(fragmentShader);
-        return true;
-    }
-    void use() {
-        glUseProgram(shader_prog_);
-    }
-    void set_transform(const glm::mat4& xform) {
-        unsigned int xform_uniform = glGetUniformLocation(shader_prog_, "xform");
-        glUniformMatrix4fv(xform_uniform, 1, GL_FALSE, glm::value_ptr(xform));
-    }
-private:
-    GLuint shader_prog_;
-};
-
-class RenderItem {
-public:
-    RenderItem(GLenum primitive_type) {
-        primitive_type_ = primitive_type;
-        glGenBuffers(1, &VBO);
-        glGenBuffers(1, &EBO);
-        material_ = nullptr;
-    }
-    ~RenderItem() {
-        glDeleteBuffers(1, &VBO);
-        glDeleteBuffers(1, &EBO);
-    }
-    void update_buffers(const std::vector<GLfloat>& vertices, const std::vector<GLuint>& indices) {
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0])*vertices.size(), vertices.data(), GL_STATIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0])*indices.size(), indices.data(), GL_STATIC_DRAW);
-
-        // position attribute
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(GLfloat), (GLvoid*)0);
-        glEnableVertexAttribArray(0);
-
-        // color attribute
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(3* sizeof(float)));
-        glEnableVertexAttribArray(1);
-
-        // texture coord attribute
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(7 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        n_indices_ = (GLsizei)indices.size();
-    }
-    void render(const glm::mat4& xform) {
-        assert(material_);
-
-        material_->use();
-        material_->set_transform(xform);
-
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glDrawElements(primitive_type_, n_indices_, GL_UNSIGNED_INT, 0);
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    }
-    void set_material(Material* m) { material_ = m; }
-
-private:
-    GLenum primitive_type_;
-    GLsizei n_indices_;
-    GLuint VBO, EBO;
-    Material *material_;
-};
-
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 800;
 float g_scale = 1.0;
+float g_image_x = -1;
+float g_image_y = -1;
 float g_offset_x = 0.0;
 float g_offset_y = 0.0;
 float g_offset_dx = 0.0;
 float g_offset_dy = 0.0;
 int g_drag_x = -1;
 int g_drag_y = -1;
+int g_image_width = WINDOW_WIDTH;
+int g_image_height = WINDOW_HEIGHT;
 
 void handle_mouse_down_event(const SDL_Event& e) {
     if (e.button.button == SDL_BUTTON_LEFT) {
@@ -182,47 +79,30 @@ void handle_mouse_up_event(const SDL_Event& e) {
 void handle_mouse_move_event(const SDL_Event& e) {
     printf("mouse: [%d, %d]\n", e.motion.x, e.motion.y);
     if (g_drag_x >= 0) {
-        g_offset_dx = e.button.x - g_drag_x;
-        g_offset_dy = -(e.button.y - g_drag_y);
+        g_offset_dx = e.motion.x - g_drag_x;
+        g_offset_dy = -(e.motion.y - g_drag_y);
     }
+    printf("g_offset: [%.1f, %.1f]\n", g_offset_x, g_offset_y);
+    g_image_x = (e.motion.x - g_offset_x - g_offset_dx) / g_scale;
+    g_image_y = (e.motion.y + g_offset_y + g_offset_dy - g_image_height) / g_scale + g_image_height;
+    printf("image: [%.1f, %.1f]\n", g_image_x, g_image_y);
 }
 
 void handle_mouse_wheel_event(const SDL_Event& e) {
 #if defined(__EMSCRIPTEN__)
-    printf("wheel [%d][%d][%d, %d][%f, %f]\n", e.wheel.timestamp, e.wheel.direction, e.wheel.x, e.wheel.y, e.wheel.preciseX, e.wheel.preciseY);
+    //printf("wheel [%d][%d][%d, %d][%f, %f]\n", e.wheel.timestamp, e.wheel.direction, e.wheel.x, e.wheel.y, e.wheel.preciseX, e.wheel.preciseY);
     bool up = e.wheel.preciseY > 0;
 #else
     bool up = e.wheel.y > 0;
 #endif
 
-    float s = 1.05f;
+    float s = 1.2f;
     if (!up)
         s = 1.0f / s;
+
+    g_offset_x += g_image_x * g_scale * (1 - s) ;
+    g_offset_y += (g_image_height - g_image_y) * g_scale * (1 - s) ;
     g_scale = std::min(200.0f, std::max(1.0f/200.0f, g_scale*s));
-}
-
-unsigned int load_texture(const char* file_path) {
-    unsigned int texture;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    int width, height, nrChannels;
-    printf("[%s]\n", file_path);
-    unsigned char *data = stbi_load(file_path, &width, &height, &nrChannels, 0);
-    if (data) {
-        printf("[%d x %d], %d\n", width, height, nrChannels);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-    } else {
-        std::cout << "Failed to load texture" << std::endl;
-    }
-    stbi_image_free(data);
-    return texture;
 }
 
 Material* g_material = nullptr;
