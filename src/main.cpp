@@ -280,20 +280,23 @@ int main(int, char**)
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
-            if (io.WantCaptureMouse)
-                continue;
             if (event.type == SDL_QUIT)
                 done = true;
             else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
                 done = true;
-            else if (event.type == SDL_MOUSEBUTTONDOWN)
-                handle_mouse_down_event(event);
-            else if (event.type == SDL_MOUSEBUTTONUP)
-                handle_mouse_up_event(event);
-            else if (event.type == SDL_MOUSEWHEEL)
-                handle_mouse_wheel_event(event);
-            else if (event.type == SDL_MOUSEMOTION)
-                handle_mouse_move_event(event);
+            else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+                done = true;
+
+            if (!io.WantCaptureMouse) {
+                if (event.type == SDL_MOUSEBUTTONDOWN)
+                    handle_mouse_down_event(event);
+                else if (event.type == SDL_MOUSEBUTTONUP)
+                    handle_mouse_up_event(event);
+                else if (event.type == SDL_MOUSEWHEEL)
+                    handle_mouse_wheel_event(event);
+                else if (event.type == SDL_MOUSEMOTION)
+                    handle_mouse_move_event(event);
+            }
         }
 
         // Start the Dear ImGui frame
@@ -361,6 +364,9 @@ int main(int, char**)
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window);
+#if !defined(__EMSCRIPTEN__)
+        SDL_Delay(1);
+#endif
     };
 #if defined(__EMSCRIPTEN__)
     // See comments around line 30.
