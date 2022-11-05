@@ -40,8 +40,8 @@ static std::function<void()> loop;
 static void main_loop() { loop(); }
 #endif
 
-const int WINDOW_WIDTH = 800;
-const int WINDOW_HEIGHT = 800;
+int g_window_width = 800;
+int g_window_height = 800;
 float g_scale = 1.0;
 float g_image_x = -1;
 float g_image_y = -1;
@@ -51,8 +51,8 @@ float g_offset_dx = 0.0;
 float g_offset_dy = 0.0;
 int g_drag_x = -1;
 int g_drag_y = -1;
-int g_image_width = WINDOW_WIDTH;
-int g_image_height = WINDOW_HEIGHT;
+int g_image_width = g_window_width;
+int g_image_height = g_window_height;
 
 void handle_mouse_down_event(const SDL_Event& e) {
     if (e.button.button == SDL_BUTTON_LEFT) {
@@ -77,15 +77,15 @@ void handle_mouse_up_event(const SDL_Event& e) {
 }
 
 void handle_mouse_move_event(const SDL_Event& e) {
-    printf("mouse: [%d, %d]\n", e.motion.x, e.motion.y);
+    //printf("mouse: [%d, %d]\n", e.motion.x, e.motion.y);
     if (g_drag_x >= 0) {
         g_offset_dx = e.motion.x - g_drag_x;
         g_offset_dy = -(e.motion.y - g_drag_y);
     }
-    printf("g_offset: [%.1f, %.1f]\n", g_offset_x, g_offset_y);
+    //printf("g_offset: [%.1f, %.1f]\n", g_offset_x, g_offset_y);
     g_image_x = (e.motion.x - g_offset_x - g_offset_dx) / g_scale;
     g_image_y = (e.motion.y + g_offset_y + g_offset_dy - g_image_height) / g_scale + g_image_height;
-    printf("image: [%.1f, %.1f]\n", g_image_x, g_image_y);
+    //printf("image: [%.1f, %.1f]\n", g_image_x, g_image_y);
 }
 
 void handle_mouse_wheel_event(const SDL_Event& e) {
@@ -128,7 +128,17 @@ void clean_up() {
 //        indices->push_back((GLuint)(base_idx + idx));
 //}
 
-// Main code
+
+#if defined(__EMSCRIPTEN__)
+EM_JS(int, canvas_get_width, (), {
+return canvas.width;
+});
+
+EM_JS(int, canvas_get_height, (), {
+return canvas.height;
+});
+#endif
+
 int main(int, char**)
 {
     // Setup SDL
@@ -207,6 +217,14 @@ int main(int, char**)
     //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
     //IM_ASSERT(font != NULL);
 
+#if defined(__EMSCRIPTEN__)
+    g_window_width = canvas_get_width();
+    g_window_height = canvas_get_height();
+    g_image_width = g_window_width;
+    g_image_height = g_window_height;
+#endif
+    printf("window: [%d, %d]\n", g_window_width, g_window_height);
+
     g_material = new Material;
     if (!g_material->build(vertexShaderSource, fragmentShaderSource))
         return -1;
@@ -262,6 +280,8 @@ int main(int, char**)
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             ImGui_ImplSDL2_ProcessEvent(&event);
+            if (io.WantCaptureMouse)
+                continue;
             if (event.type == SDL_QUIT)
                 done = true;
             else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
@@ -329,8 +349,8 @@ int main(int, char**)
         //model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
         view = glm::translate(view, glm::vec3(g_offset_x + g_offset_dx, g_offset_y + g_offset_dy, 0.0f));
         model = glm::scale(model, glm::vec3(g_scale, g_scale, 1.0));
-        glm::mat4 proj = glm::ortho(0.0f, (float)WINDOW_WIDTH, 0.0f, (float)WINDOW_HEIGHT, -1000.0f, 1000.0f);
-        //glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
+        glm::mat4 proj = glm::ortho(0.0f, (float)g_window_width, 0.0f, (float)g_window_height, -1000.0f, 1000.0f);
+        //glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)g_window_width / (float)g_window_height, 0.1f, 1000.0f);
 
 
         glBindTexture(GL_TEXTURE_2D, texture_id);
