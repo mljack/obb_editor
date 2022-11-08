@@ -105,10 +105,12 @@ void handle_mouse_wheel_event(const SDL_Event& e) {
     g_scale = std::min(200.0f, std::max(1.0f/200.0f, g_scale*s));
 }
 
-Material* g_material = nullptr;
+Material* g_background_img_material = nullptr;
+Material* g_line_material = nullptr;
 
 void clean_up() {
-    delete g_material;
+    delete g_background_img_material;
+    delete g_line_material;
     // Terminate GLFW, clearing any resources allocated by GLFW.
     //glfwTerminate();
     //OUT std::cout << "exit main" << std::endl;
@@ -225,8 +227,11 @@ int main(int, char**)
 #endif
     printf("window: [%d, %d]\n", g_window_width, g_window_height);
 
-    g_material = new Material;
-    if (!g_material->build(vertexShaderSource, fragmentShaderSource))
+    g_background_img_material = new Material;
+    if (!g_background_img_material->build(vertex_shader_src, fragment_shader_src))
+        return -1;
+    g_line_material = new Material;
+    if (!g_line_material->build(vertex_shader_src2, fragment_shader_src2))
         return -1;
 
     const float base_x = 0.0f;
@@ -244,9 +249,24 @@ int main(int, char**)
         0, 1, 2, 0, 2, 3
     };
     
+    std::vector<GLfloat> vertices3 = {
+        // x        y        z     r     g     b     a
+        100+base_x  , base_y  , 10.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+        100+base_x+w, base_y  , 10.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+        100+base_x+w, base_y+h, 10.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+        100+base_x  , base_y+h, 10.0f, 1.0f, 0.0f, 0.0f, 1.0f,
+    };
+    std::vector<GLuint> indices3 = {
+        0, 1, 1, 2, 2, 3, 3, 0
+    };
+
     RenderItem rect(GL_TRIANGLES);
-    rect.set_material(g_material);
-    rect.update_buffers(vertices2, indices2);
+    rect.set_material(g_background_img_material);
+    rect.update_buffers_for_textured_geoms(vertices2, indices2);
+
+    RenderItem lines(GL_LINES);
+    lines.set_material(g_line_material);
+    lines.update_buffers_for_nontextured_geoms(vertices3, indices3);
 
 #if defined(__EMSCRIPTEN__)
     unsigned int texture_id = load_texture("/resources/cat.jpg");
@@ -356,9 +376,13 @@ int main(int, char**)
         //glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)g_window_width / (float)g_window_height, 0.1f, 1000.0f);
 
 
-        glBindTexture(GL_TEXTURE_2D, texture_id);
         glm::mat4 xform = proj * view * model;
-        rect.render(xform);
+        glBindTexture(GL_TEXTURE_2D, texture_id);
+        rect.render_textured(xform);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glLineWidth(3.0f);
+        lines.render_nontextured(xform);
+        glLineWidth(1.0f);
 
         // Rendering GUI
         ImGui::Render();

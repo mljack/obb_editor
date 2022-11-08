@@ -1,6 +1,6 @@
 #pragma once
 
-const char* vertexShaderSource = R"(#version 300 es
+const char* vertex_shader_src = R"(#version 300 es
 in vec3 position;
 in vec4 inputColor;
 in vec2 aTexCoord;
@@ -16,8 +16,7 @@ void main() {
 }
 )";
 
-
-const char* fragmentShaderSource = R"(#version 300 es
+const char* fragment_shader_src = R"(#version 300 es
 precision mediump float;
 out vec4 fragColor;
 
@@ -26,5 +25,28 @@ in vec2 TexCoord;
 uniform sampler2D texture1;
 void main() {
     fragColor = color * texture(texture1, TexCoord); 
+}
+)";
+
+const char* vertex_shader_src2 = R"(#version 300 es
+in vec3 position;
+in vec4 inputColor;
+
+uniform mat4 xform;
+
+out vec4 color;
+void main() {
+    gl_Position = xform * vec4(position, 1.0);
+    color = inputColor;
+}
+)";
+
+const char* fragment_shader_src2 = R"(#version 300 es
+precision mediump float;
+out vec4 fragColor;
+
+in vec4 color;
+void main() {
+    fragColor = color; 
 }
 )";
