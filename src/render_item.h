@@ -6,18 +6,18 @@ class RenderItem {
 public:
     RenderItem(GLenum primitive_type) {
         primitive_type_ = primitive_type;
-        glGenBuffers(1, &VBO);
-        glGenBuffers(1, &EBO);
         material_ = nullptr;
-        printf("VBO %d\n", VBO);
     }
     ~RenderItem() {
-        glDeleteBuffers(1, &VBO);
-        glDeleteBuffers(1, &EBO);
+        clear();
     }
     void update_buffers_for_textured_geoms(const std::vector<GLfloat>& vertices, const std::vector<GLuint>& indices) {
+        clear();
+
+        glGenBuffers(1, &VBO);
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0])*vertices.size(), vertices.data(), GL_STATIC_DRAW);
+        glGenBuffers(1, &EBO);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0])*indices.size(), indices.data(), GL_STATIC_DRAW);
 
@@ -38,8 +38,12 @@ public:
     }
 
     void update_buffers_for_nontextured_geoms(const std::vector<GLfloat>& vertices, const std::vector<GLuint>& indices) {
+        clear();
+
+        glGenBuffers(1, &VBO);
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices[0])*vertices.size(), vertices.data(), GL_STATIC_DRAW);
+        glGenBuffers(1, &EBO);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices[0])*indices.size(), indices.data(), GL_STATIC_DRAW);
 
@@ -61,7 +65,6 @@ public:
         material_->use();
         material_->set_transform(xform);
 
-        //printf("render: %d\n", VBO);
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
         // position attribute
@@ -81,6 +84,9 @@ public:
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
+        glDisableVertexAttribArray(2);
     }
 
     void render_nontextured(const glm::mat4& xform) {
@@ -89,7 +95,6 @@ public:
         material_->use();
         material_->set_transform(xform);
 
-        //printf("render: %d\n", VBO);
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
         // position attribute
@@ -105,12 +110,23 @@ public:
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
     }
     void set_material(Material* m) { material_ = m; }
 
 private:
+    void clear() {
+        if (VBO)
+            glDeleteBuffers(1, &VBO);
+        if (EBO)
+            glDeleteBuffers(1, &EBO);
+        VBO = 0;
+        EBO = 0;
+    }
     GLenum primitive_type_;
     GLsizei n_indices_;
-    GLuint VBO, EBO;
+    GLuint VBO = 0;
+    GLuint EBO = 0;
     Material *material_;
 };

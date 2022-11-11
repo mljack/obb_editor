@@ -28,6 +28,7 @@
 #include "material.h"
 #include "render_item.h"
 #include "texture.h"
+#include <array>
 
 #if defined(__EMSCRIPTEN__)
 // Emscripten wants to run the mainloop because of the way the browser is single threaded.
@@ -45,21 +46,48 @@ int g_window_height = 800;
 float g_scale = 1.0;
 float g_image_x = -1;
 float g_image_y = -1;
+
+bool g_image_dragging = false;
 float g_offset_x = 0.0;
 float g_offset_y = 0.0;
 float g_offset_dx = 0.0;
 float g_offset_dy = 0.0;
 int g_drag_x = -1;
 int g_drag_y = -1;
+
+float g_marker_x = 0.0;
+float g_marker_y = 0.0;
+float g_marker_length = 500.0f;
+float g_marker_width = 250.0f;
+float g_marker_heading = 15.0f;
+
+bool g_marker_dragging = false;
+bool g_marker_rotating = false;
+float g_marker_offset_dx = 0.0;
+float g_marker_offset_dy = 0.0;
+float g_marker_offset_heading = 0.0;
+int g_marker_drag_x = -1;
+int g_marker_drag_y = -1;
+
 int g_image_width = g_window_width;
 int g_image_height = g_window_height;
 
 void handle_mouse_down_event(const SDL_Event& e) {
+    g_image_x = (e.button.x - g_offset_x - g_offset_dx) / g_scale;
+    g_image_y = (e.button.y + g_offset_y + g_offset_dy - g_image_height) / g_scale + g_image_height;
+
     if (e.button.button == SDL_BUTTON_LEFT) {
         g_drag_x = e.button.x;
         g_drag_y = e.button.y;
+        g_image_dragging = true;
     } else if (e.button.button == SDL_BUTTON_RIGHT) {
-
+        g_marker_drag_x = g_image_x;
+        g_marker_drag_y = g_image_y;
+        if (std::abs(g_image_x - g_marker_x) < 100 && std::abs(g_image_y - g_marker_y) < 100)
+            g_marker_dragging = true;
+        else
+            g_marker_rotating = true;
+        printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker_x, g_marker_y, g_marker_length, g_marker_width, g_marker_heading);
     }
 }
 
@@ -71,14 +99,25 @@ void handle_mouse_up_event(const SDL_Event& e) {
         g_offset_dy = 0;
         g_drag_x = -1;
         g_drag_y = -1;
+        g_image_dragging = false;
     } else if (e.button.button == SDL_BUTTON_RIGHT) {
-
+        g_marker_x += g_marker_offset_dx;
+        g_marker_y -= g_marker_offset_dy;
+        g_marker_heading += g_marker_offset_heading;
+        g_marker_offset_dx = 0.0;
+        g_marker_offset_dy = 0.0;
+        g_marker_offset_heading = 0.0;
+        g_marker_drag_x = -1;
+        g_marker_drag_y = -1;
+        g_marker_dragging = false;
+        g_marker_rotating = false;
+        printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker_x, g_marker_y, g_marker_length, g_marker_width, g_marker_heading);
     }
 }
 
 void handle_mouse_move_event(const SDL_Event& e) {
     //printf("mouse: [%d, %d]\n", e.motion.x, e.motion.y);
-    if (g_drag_x >= 0) {
+    if (g_image_dragging) {
         g_offset_dx = e.motion.x - g_drag_x;
         g_offset_dy = -(e.motion.y - g_drag_y);
     }
@@ -86,6 +125,14 @@ void handle_mouse_move_event(const SDL_Event& e) {
     g_image_x = (e.motion.x - g_offset_x - g_offset_dx) / g_scale;
     g_image_y = (e.motion.y + g_offset_y + g_offset_dy - g_image_height) / g_scale + g_image_height;
     //printf("image: [%.1f, %.1f]\n", g_image_x, g_image_y);
+
+    if (g_marker_dragging) {
+        g_marker_offset_dx = g_image_x - g_marker_drag_x;
+        g_marker_offset_dy = g_marker_drag_y - g_image_y;
+        //printf("marker dxdy: [%.1f, %.1f]\n", g_marker_offset_dx, g_marker_offset_dy);
+    } else if (g_marker_rotating) {
+        g_marker_offset_heading = (g_marker_drag_x - g_image_x) * 0.1;
+    }
 }
 
 void handle_mouse_wheel_event(const SDL_Event& e) {
@@ -140,6 +187,46 @@ EM_JS(int, canvas_get_height, (), {
 return canvas.height;
 });
 #endif
+
+void build_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
+    float yaw = -glm::radians(g_marker_heading + g_marker_offset_heading);
+    //g_marker_x + g_marker_offset_dx, - g_marker_y - g_marker_offset_dy
+    glm::vec2 c(g_marker_x + g_marker_offset_dx, g_image_height - g_marker_y + g_marker_offset_dy);
+    glm::vec2 dir(std::cos(yaw), std::sin(yaw));
+    glm::vec2 normal(-std::sin(yaw), std::cos(yaw));
+
+    float length = g_marker_length / 2;
+    float width = g_marker_width / 2;
+    std::array<glm::vec2, 8> pts = {
+        c - length * dir - width * normal,
+        c + length * dir - width * normal,
+        c + length * dir + width * normal,
+        c - length * dir + width * normal,
+        c + length * dir,
+        c + 1.4f * length * dir,
+        c + 1.2f * length * dir + 0.5f * width * normal,
+        c + 1.2f * length * dir - 0.5f * width * normal,
+    };
+    GLuint base_idx = (GLuint)v_buf->size() / 7;
+    for(auto& pt : pts) {
+        v_buf->push_back(pt.x);
+        v_buf->push_back(pt.y);
+        v_buf->push_back(10.0f);
+        v_buf->push_back(1.0f);
+        v_buf->push_back(0.0f);
+        v_buf->push_back(0.0f);
+        v_buf->push_back(1.0f);
+    }
+    idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
+    idx_buf->push_back(base_idx + 1); idx_buf->push_back(base_idx + 2);
+    idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
+    idx_buf->push_back(base_idx + 3); idx_buf->push_back(base_idx + 0);
+    //idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 1);
+    //idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 2);
+    idx_buf->push_back(base_idx + 4); idx_buf->push_back(base_idx + 5);
+    idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 6);
+    idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 7);
+}
 
 int main(int, char**)
 {
@@ -249,16 +336,6 @@ int main(int, char**)
         0, 1, 2, 0, 2, 3
     };
     
-    std::vector<GLfloat> vertices3 = {
-        // x        y        z     r     g     b     a
-        100+base_x  , base_y  , 10.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-        100+base_x+w, base_y  , 10.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-        100+base_x+w, base_y+h, 10.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-        100+base_x  , base_y+h, 10.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-    };
-    std::vector<GLuint> indices3 = {
-        0, 1, 1, 2, 2, 3, 3, 0
-    };
 
     RenderItem rect(GL_TRIANGLES);
     rect.set_material(g_background_img_material);
@@ -266,7 +343,6 @@ int main(int, char**)
 
     RenderItem lines(GL_LINES);
     lines.set_material(g_line_material);
-    lines.update_buffers_for_nontextured_geoms(vertices3, indices3);
 
 #if defined(__EMSCRIPTEN__)
     unsigned int texture_id = load_texture("/resources/cat.jpg");
@@ -371,25 +447,32 @@ int main(int, char**)
         glm::mat4 view(1.0);
         //model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
         view = glm::translate(view, glm::vec3(g_offset_x + g_offset_dx, g_offset_y + g_offset_dy, 0.0f));
-        model = glm::scale(model, glm::vec3(g_scale, g_scale, 1.0));
+        view = view * glm::scale(model, glm::vec3(g_scale, g_scale, 1.0));
         glm::mat4 proj = glm::ortho(0.0f, (float)g_window_width, 0.0f, (float)g_window_height, -1000.0f, 1000.0f);
-        //glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float)g_window_width / (float)g_window_height, 0.1f, 1000.0f);
+        {
+            glm::mat4 xform = proj * view * model;
+            glBindTexture(GL_TEXTURE_2D, texture_id);
+            rect.render_textured(xform);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+        {
+            std::vector<GLfloat> vertices3;
+            std::vector<GLuint> indices3;
+            build_marker_geom(&vertices3, &indices3);
+            lines.update_buffers_for_nontextured_geoms(vertices3, indices3);
 
-
-        glm::mat4 xform = proj * view * model;
-        glBindTexture(GL_TEXTURE_2D, texture_id);
-        rect.render_textured(xform);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glLineWidth(3.0f);
-        lines.render_nontextured(xform);
-        glLineWidth(1.0f);
+            glm::mat4 xform = proj * view;
+            glLineWidth(3.0f);
+            lines.render_nontextured(xform);
+            glLineWidth(1.0f);
+        }
 
         // Rendering GUI
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window);
 #if !defined(__EMSCRIPTEN__)
-        SDL_Delay(1);
+        SDL_Delay(17);
 #endif
     };
 #if defined(__EMSCRIPTEN__)
