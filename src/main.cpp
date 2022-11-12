@@ -41,8 +41,8 @@ static std::function<void()> loop;
 static void main_loop() { loop(); }
 #endif
 
-int g_window_width = 800;
-int g_window_height = 800;
+int g_window_width = 1600;
+int g_window_height = 900;
 float g_scale = 1.0;
 float g_image_x = -1;
 float g_image_y = -1;
@@ -52,13 +52,13 @@ float g_offset_x = 0.0;
 float g_offset_y = 0.0;
 float g_offset_dx = 0.0;
 float g_offset_dy = 0.0;
-int g_drag_x = -1;
-int g_drag_y = -1;
+float g_drag_x = -1;
+float g_drag_y = -1;
 
 float g_marker_x = 0.0;
 float g_marker_y = 0.0;
-float g_marker_length = 400.0f;
-float g_marker_width = 200.0f;
+float g_marker_length = 100.0f;
+float g_marker_width = 50.0f;
 float g_marker_heading = 15.0f;
 
 bool g_marker_dragging_ready = false;
@@ -72,15 +72,15 @@ bool g_marker_rotating = false;
 float g_marker_offset_dx = 0.0;
 float g_marker_offset_dy = 0.0;
 float g_marker_offset_heading = 0.0;
-int g_marker_drag_x = -1;
-int g_marker_drag_y = -1;
+float g_marker_drag_x = -1;
+float g_marker_drag_y = -1;
 
-int g_image_width = g_window_width;
-int g_image_height = g_window_height;
+int g_image_width = 0;
+int g_image_height = 0;
 
 void handle_mouse_down_event(const SDL_Event& e) {
     g_image_x = (e.button.x - g_offset_x - g_offset_dx) / g_scale;
-    g_image_y = (e.button.y + g_offset_y + g_offset_dy - g_image_height) / g_scale + g_image_height;
+    g_image_y = (e.button.y + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
 
     if (e.button.button == SDL_BUTTON_LEFT) {
         g_drag_x = e.button.x;
@@ -135,7 +135,7 @@ void handle_mouse_up_event(const SDL_Event& e) {
     } else if (e.button.button == SDL_BUTTON_RIGHT) {
         g_marker_x += g_marker_offset_dx;
         g_marker_y += g_marker_offset_dy;
-        g_marker_heading += g_marker_offset_heading;
+        g_marker_heading = std::fmod(g_marker_heading + g_marker_offset_heading, 360.0f);
         g_marker_offset_dx = 0.0;
         g_marker_offset_dy = 0.0;
         g_marker_offset_heading = 0.0;
@@ -143,7 +143,7 @@ void handle_mouse_up_event(const SDL_Event& e) {
         g_marker_drag_y = -1;
         g_marker_dragging = false;
         g_marker_rotating = false;
-        printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker_x, g_marker_y, g_marker_length, g_marker_width, g_marker_heading);
+        //printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker_x, g_marker_y, g_marker_length, g_marker_width, g_marker_heading);
     }
 }
 
@@ -155,7 +155,7 @@ void handle_mouse_move_event(const SDL_Event& e) {
     }
     //printf("g_offset: [%.1f, %.1f]\n", g_offset_x, g_offset_y);
     g_image_x = (e.motion.x - g_offset_x - g_offset_dx) / g_scale;
-    g_image_y = (e.motion.y + g_offset_y + g_offset_dy - g_image_height) / g_scale + g_image_height;
+    g_image_y = (e.motion.y + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
     //printf("image: [%.1f, %.1f]\n", g_image_x, g_image_y);
 
     if (g_marker_dragging) {
@@ -163,7 +163,7 @@ void handle_mouse_move_event(const SDL_Event& e) {
         g_marker_offset_dy = g_image_y - g_marker_drag_y;
         //printf("marker dxdy: [%.1f, %.1f]\n", g_marker_offset_dx, g_marker_offset_dy);
     } else if (g_marker_rotating) {
-        g_marker_offset_heading = (g_marker_drag_x - g_image_x) * 0.1;
+        g_marker_offset_heading = (g_marker_drag_x - g_image_x) * 0.3;
     } else {
         glm::vec2 v(g_image_x - g_marker_x, g_image_y - g_marker_y);
         float yaw = glm::radians(g_marker_heading);
@@ -178,12 +178,12 @@ void handle_mouse_move_event(const SDL_Event& e) {
         //printf("marker dist: [%.1f, %.1f]\n", s, l);
         float ratio = std::abs(s / l);
         float marker_ratio = length / width;
-        float drag_radius = 10;
+        float drag_radius = width / 2;
         g_marker_dragging_ready = (r <= drag_radius);
-        g_marker_front_edge_ready = (r > drag_radius && s > 0 && ((s < length && ratio > marker_ratio) || (s >= length && std::abs(l) < width && s < R * 4)));
-        g_marker_back_edge_ready = (r > drag_radius && s < 0 && ((s > -length && ratio > marker_ratio) || (s <= -length && std::abs(l) < width && s > -R * 4)));
-        g_marker_left_edge_ready = (r > drag_radius && l < 0 && ((l >- width && ratio < marker_ratio) || (l <= -width && std::abs(s) < length && s < R * 2)));
-        g_marker_right_edge_ready = (r > drag_radius && l > 0 && ((l < width && ratio < marker_ratio) || (l >= width && std::abs(s) < length && s < R * 2)));
+        g_marker_front_edge_ready = (r > drag_radius && s > 0 && ((s < length && ratio > marker_ratio) || (s >= length && std::abs(l) < width && s < R * 3)));
+        g_marker_back_edge_ready = (r > drag_radius && s < 0 && ((s > -length && ratio > marker_ratio) || (s <= -length && std::abs(l) < width && s > -R * 3)));
+        g_marker_left_edge_ready = (r > drag_radius && l < 0 && ((l >- width && ratio < marker_ratio) || (l <= -width && std::abs(s) < length && l > -width * 2)));
+        g_marker_right_edge_ready = (r > drag_radius && l > 0 && ((l < width && ratio < marker_ratio) || (l >= width && std::abs(s) < length && l < width * 2)));
         g_marker_rotating_ready = !(g_marker_dragging_ready || g_marker_front_edge_ready || g_marker_back_edge_ready || g_marker_left_edge_ready || g_marker_right_edge_ready);
     }
 }
@@ -386,8 +386,6 @@ int main(int, char**)
 #if defined(__EMSCRIPTEN__)
     g_window_width = canvas_get_width();
     g_window_height = canvas_get_height();
-    g_image_width = g_window_width;
-    g_image_height = g_window_height;
 #endif
     printf("window: [%d, %d]\n", g_window_width, g_window_height);
 
@@ -398,21 +396,39 @@ int main(int, char**)
     if (!g_line_material->build(vertex_shader_src2, fragment_shader_src2))
         return -1;
 
+#if 1
+#define BACKGROUND_IMG "cat.jpg"
+#else
+#define BACKGROUND_IMG "6k.png"
+#endif
+
+#if defined(__EMSCRIPTEN__)
+    unsigned int texture_id = load_texture("/resources/" BACKGROUND_IMG, &g_image_width, &g_image_height);
+#else
+    unsigned int texture_id = load_texture("../resources/" BACKGROUND_IMG, &g_image_width, &g_image_height);
+#endif
+
+    g_scale = std::min(g_window_width / (float)g_image_width, g_window_height / (float)g_image_height);
+    g_offset_x = (g_window_width - g_image_width * g_scale) / 2;
+    g_offset_y = (g_window_height - g_image_height * g_scale) / 2;
+
+    g_marker_x = g_image_width * 0.5f;
+    g_marker_y = g_image_height * 0.5f;
+
     const float base_x = 0.0f;
     const float base_y = 0.0f;
-    const float w = 800.0f;
-    const float h = 800.0f;
+    const float w = g_image_width;
+    const float h = g_image_height;
     std::vector<GLfloat> vertices2 = {
         // x        y        z     r     g     b     a     u     v
-        base_x  , base_y  , 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-        base_x+w, base_y  , 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-        base_x+w, base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f,
-        base_x  , base_y+h, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        base_x  , base_y  , 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.0f, 1.0f,
+        base_x+w, base_y  , 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 1.0f, 1.0f,
+        base_x+w, base_y+h, 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 1.0f, 0.0f,
+        base_x  , base_y+h, 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.0f, 0.0f,
     };
     std::vector<GLuint> indices2 = {
         0, 1, 2, 0, 2, 3
     };
-    
 
     RenderItem rect(GL_TRIANGLES);
     rect.set_material(g_background_img_material);
@@ -421,11 +437,6 @@ int main(int, char**)
     RenderItem lines(GL_LINES);
     lines.set_material(g_line_material);
 
-#if defined(__EMSCRIPTEN__)
-    unsigned int texture_id = load_texture("/resources/cat.jpg");
-#else
-    unsigned int texture_id = load_texture("../resources/cat.jpg");
-#endif
 
     // Our state
     bool show_demo_window = true;
@@ -539,7 +550,7 @@ int main(int, char**)
             lines.update_buffers_for_nontextured_geoms(vertices3, indices3);
 
             glm::mat4 xform = proj * view;
-            glLineWidth(3.0f);
+            glLineWidth(2.0f);
             lines.render_nontextured(xform);
             glLineWidth(1.0f);
         }
