@@ -57,10 +57,16 @@ int g_drag_y = -1;
 
 float g_marker_x = 0.0;
 float g_marker_y = 0.0;
-float g_marker_length = 500.0f;
-float g_marker_width = 250.0f;
+float g_marker_length = 400.0f;
+float g_marker_width = 200.0f;
 float g_marker_heading = 15.0f;
 
+bool g_marker_dragging_ready = false;
+bool g_marker_rotating_ready = false;
+bool g_marker_front_edge_ready = false;
+bool g_marker_back_edge_ready = false;
+bool g_marker_left_edge_ready = false;
+bool g_marker_right_edge_ready = false;
 bool g_marker_dragging = false;
 bool g_marker_rotating = false;
 float g_marker_offset_dx = 0.0;
@@ -83,12 +89,38 @@ void handle_mouse_down_event(const SDL_Event& e) {
     } else if (e.button.button == SDL_BUTTON_RIGHT) {
         g_marker_drag_x = g_image_x;
         g_marker_drag_y = g_image_y;
-        if (std::abs(g_image_x - g_marker_x) < 100 && std::abs(g_image_y - g_marker_y) < 100)
+        if (g_marker_dragging_ready)
             g_marker_dragging = true;
-        else
+        else if (g_marker_rotating_ready)
             g_marker_rotating = true;
-        printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker_x, g_marker_y, g_marker_length, g_marker_width, g_marker_heading);
+        else {
+            glm::vec2 c(g_marker_x, g_marker_y);
+            glm::vec2 v(g_image_x, g_image_y);
+            v -= c;
+            float yaw = glm::radians(g_marker_heading);
+            glm::vec2 dir(std::cos(yaw), std::sin(yaw));
+            glm::vec2 normal(-std::sin(yaw), std::cos(yaw));
+            float s = dot(v, dir);
+            float l = dot(v, normal);
+            if (g_marker_front_edge_ready) {
+                c += (s - g_marker_length / 2) / 2 * dir;
+                g_marker_length = s + g_marker_length / 2;
+            } else if (g_marker_back_edge_ready) {
+                c += (s + g_marker_length / 2) / 2 * dir;
+                g_marker_length = -s + g_marker_length / 2;
+            } else if (g_marker_left_edge_ready) {
+                c += (l + g_marker_width / 2) / 2 * normal;
+                g_marker_width = -l + g_marker_width / 2;
+            } else if (g_marker_right_edge_ready) {
+                c += (l - g_marker_width / 2) / 2 * normal;
+                g_marker_width = l + g_marker_width / 2;
+            }
+            g_marker_x = c.x;
+            g_marker_y = c.y;
+        }
+        //printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker_x, g_marker_y, g_marker_length, g_marker_width, g_marker_heading);
     }
+    //printf("mouse: [%.1f, %.1f]\n", g_image_x, g_image_y);
 }
 
 void handle_mouse_up_event(const SDL_Event& e) {
@@ -102,7 +134,7 @@ void handle_mouse_up_event(const SDL_Event& e) {
         g_image_dragging = false;
     } else if (e.button.button == SDL_BUTTON_RIGHT) {
         g_marker_x += g_marker_offset_dx;
-        g_marker_y -= g_marker_offset_dy;
+        g_marker_y += g_marker_offset_dy;
         g_marker_heading += g_marker_offset_heading;
         g_marker_offset_dx = 0.0;
         g_marker_offset_dy = 0.0;
@@ -128,10 +160,31 @@ void handle_mouse_move_event(const SDL_Event& e) {
 
     if (g_marker_dragging) {
         g_marker_offset_dx = g_image_x - g_marker_drag_x;
-        g_marker_offset_dy = g_marker_drag_y - g_image_y;
+        g_marker_offset_dy = g_image_y - g_marker_drag_y;
         //printf("marker dxdy: [%.1f, %.1f]\n", g_marker_offset_dx, g_marker_offset_dy);
     } else if (g_marker_rotating) {
         g_marker_offset_heading = (g_marker_drag_x - g_image_x) * 0.1;
+    } else {
+        glm::vec2 v(g_image_x - g_marker_x, g_image_y - g_marker_y);
+        float yaw = glm::radians(g_marker_heading);
+        glm::vec2 dir(std::cos(yaw), std::sin(yaw));
+        glm::vec2 normal(-std::sin(yaw), std::cos(yaw));
+        float s = dot(v, dir);
+        float l = dot(v, normal);
+        float length = g_marker_length / 2;
+        float width = g_marker_width / 2;
+        float r = std::sqrt(s * s + l * l);
+        float R = std::sqrt(width * width + length * length);
+        //printf("marker dist: [%.1f, %.1f]\n", s, l);
+        float ratio = std::abs(s / l);
+        float marker_ratio = length / width;
+        float drag_radius = 10;
+        g_marker_dragging_ready = (r <= drag_radius);
+        g_marker_front_edge_ready = (r > drag_radius && s > 0 && ((s < length && ratio > marker_ratio) || (s >= length && std::abs(l) < width && s < R * 4)));
+        g_marker_back_edge_ready = (r > drag_radius && s < 0 && ((s > -length && ratio > marker_ratio) || (s <= -length && std::abs(l) < width && s > -R * 4)));
+        g_marker_left_edge_ready = (r > drag_radius && l < 0 && ((l >- width && ratio < marker_ratio) || (l <= -width && std::abs(s) < length && s < R * 2)));
+        g_marker_right_edge_ready = (r > drag_radius && l > 0 && ((l < width && ratio < marker_ratio) || (l >= width && std::abs(s) < length && s < R * 2)));
+        g_marker_rotating_ready = !(g_marker_dragging_ready || g_marker_front_edge_ready || g_marker_back_edge_ready || g_marker_left_edge_ready || g_marker_right_edge_ready);
     }
 }
 
@@ -189,43 +242,67 @@ return canvas.height;
 #endif
 
 void build_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
-    float yaw = -glm::radians(g_marker_heading + g_marker_offset_heading);
-    //g_marker_x + g_marker_offset_dx, - g_marker_y - g_marker_offset_dy
-    glm::vec2 c(g_marker_x + g_marker_offset_dx, g_image_height - g_marker_y + g_marker_offset_dy);
+    float yaw = glm::radians(g_marker_heading + g_marker_offset_heading);
+    glm::vec2 c(g_marker_x + g_marker_offset_dx, g_marker_y + g_marker_offset_dy);
     glm::vec2 dir(std::cos(yaw), std::sin(yaw));
     glm::vec2 normal(-std::sin(yaw), std::cos(yaw));
 
     float length = g_marker_length / 2;
     float width = g_marker_width / 2;
-    std::array<glm::vec2, 8> pts = {
+    std::array<glm::vec2, 16> pts = {
         c - length * dir - width * normal,
         c + length * dir - width * normal,
+        c + length * dir - width * normal,
+        c + length * dir + width * normal,
         c + length * dir + width * normal,
         c - length * dir + width * normal,
+        c - length * dir + width * normal,
+        c - length * dir - width * normal,
         c + length * dir,
-        c + 1.4f * length * dir,
-        c + 1.2f * length * dir + 0.5f * width * normal,
-        c + 1.2f * length * dir - 0.5f * width * normal,
+        c + (length + width / 2) * dir,
+        c + (length + width / 4) * dir + width / 4 * normal,
+        c + (length + width / 4) * dir - width / 4 * normal,
+        c - glm::vec2(width / 4, 0.0f),
+        c + glm::vec2(width / 4, 0.0f),
+        c - glm::vec2(0.0f, width / 4),
+        c + glm::vec2(0.0f, width / 4),
     };
     GLuint base_idx = (GLuint)v_buf->size() / 7;
     for(auto& pt : pts) {
         v_buf->push_back(pt.x);
-        v_buf->push_back(pt.y);
+        v_buf->push_back(g_image_height - pt.y);
         v_buf->push_back(10.0f);
-        v_buf->push_back(1.0f);
-        v_buf->push_back(0.0f);
-        v_buf->push_back(0.0f);
-        v_buf->push_back(1.0f);
+        auto idx = &pt-pts.data();
+        bool ready = false;
+        ready = ready || (g_marker_dragging_ready && idx >=12 && idx <= 15);
+        ready = ready || (g_marker_front_edge_ready && idx >=2 && idx <= 3);
+        ready = ready || (g_marker_back_edge_ready && idx >= 6 && idx <= 7);
+        ready = ready || (g_marker_left_edge_ready && idx >= 0 && idx <= 1);
+        ready = ready || (g_marker_right_edge_ready && idx >= 4 && idx <= 5);
+        ready = ready || (g_marker_rotating_ready && idx >= 8 && idx <= 11);
+        if (ready) {
+            v_buf->push_back(0.0f);
+            v_buf->push_back(0.0f);
+            v_buf->push_back(1.0f);
+            v_buf->push_back(1.0f);
+        } else {
+            v_buf->push_back(1.0f);
+            v_buf->push_back(0.0f);
+            v_buf->push_back(0.0f);
+            v_buf->push_back(1.0f);
+        }
     }
     idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
-    idx_buf->push_back(base_idx + 1); idx_buf->push_back(base_idx + 2);
     idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
-    idx_buf->push_back(base_idx + 3); idx_buf->push_back(base_idx + 0);
+    idx_buf->push_back(base_idx + 4); idx_buf->push_back(base_idx + 5);
+    idx_buf->push_back(base_idx + 6); idx_buf->push_back(base_idx + 7);
     //idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 1);
     //idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 2);
-    idx_buf->push_back(base_idx + 4); idx_buf->push_back(base_idx + 5);
-    idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 6);
-    idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 7);
+    idx_buf->push_back(base_idx + 8); idx_buf->push_back(base_idx + 9);
+    idx_buf->push_back(base_idx + 9); idx_buf->push_back(base_idx + 10);
+    idx_buf->push_back(base_idx + 9); idx_buf->push_back(base_idx + 11);
+    idx_buf->push_back(base_idx + 12); idx_buf->push_back(base_idx + 13);
+    idx_buf->push_back(base_idx + 14); idx_buf->push_back(base_idx + 15);
 }
 
 int main(int, char**)
