@@ -43,7 +43,9 @@ static void main_loop() { loop(); }
 
 int g_window_width = 1600;
 int g_window_height = 900;
-float g_scale = 1.0;
+int g_image_width = 0;
+int g_image_height = 0;
+
 float g_image_x = -1;
 float g_image_y = -1;
 
@@ -54,12 +56,7 @@ float g_offset_dx = 0.0;
 float g_offset_dy = 0.0;
 float g_drag_x = -1;
 float g_drag_y = -1;
-
-float g_marker_x = 0.0;
-float g_marker_y = 0.0;
-float g_marker_length = 100.0f;
-float g_marker_width = 50.0f;
-float g_marker_heading = 15.0f;
+float g_scale = 1.0;
 
 bool g_marker_dragging_ready = false;
 bool g_marker_rotating_ready = false;
@@ -75,8 +72,16 @@ float g_marker_offset_heading = 0.0;
 float g_marker_drag_x = -1;
 float g_marker_drag_y = -1;
 
-int g_image_width = 0;
-int g_image_height = 0;
+struct Marker {
+public:
+    float x = 0.0f;
+    float y = 0.0f;
+    float length = 100.0f;
+    float width = 50.0f;
+    float heading = 15.0f;
+};
+
+Marker* g_latest_marker = new Marker;
 
 void handle_mouse_down_event(const SDL_Event& e) {
     g_image_x = (e.button.x - g_offset_x - g_offset_dx) / g_scale;
@@ -94,31 +99,31 @@ void handle_mouse_down_event(const SDL_Event& e) {
         else if (g_marker_rotating_ready)
             g_marker_rotating = true;
         else {
-            glm::vec2 c(g_marker_x, g_marker_y);
+            glm::vec2 c(g_latest_marker->x, g_latest_marker->y);
             glm::vec2 v(g_image_x, g_image_y);
             v -= c;
-            float yaw = glm::radians(g_marker_heading);
+            float yaw = glm::radians(g_latest_marker->heading);
             glm::vec2 dir(std::cos(yaw), std::sin(yaw));
             glm::vec2 normal(-std::sin(yaw), std::cos(yaw));
             float s = dot(v, dir);
             float l = dot(v, normal);
             if (g_marker_front_edge_ready) {
-                c += (s - g_marker_length / 2) / 2 * dir;
-                g_marker_length = s + g_marker_length / 2;
+                c += (s - g_latest_marker->length / 2) / 2 * dir;
+                g_latest_marker->length = s + g_latest_marker->length / 2;
             } else if (g_marker_back_edge_ready) {
-                c += (s + g_marker_length / 2) / 2 * dir;
-                g_marker_length = -s + g_marker_length / 2;
+                c += (s + g_latest_marker->length / 2) / 2 * dir;
+                g_latest_marker->length = -s + g_latest_marker->length / 2;
             } else if (g_marker_left_edge_ready) {
-                c += (l + g_marker_width / 2) / 2 * normal;
-                g_marker_width = -l + g_marker_width / 2;
+                c += (l + g_latest_marker->width / 2) / 2 * normal;
+                g_latest_marker->width = -l + g_latest_marker->width / 2;
             } else if (g_marker_right_edge_ready) {
-                c += (l - g_marker_width / 2) / 2 * normal;
-                g_marker_width = l + g_marker_width / 2;
+                c += (l - g_latest_marker->width / 2) / 2 * normal;
+                g_latest_marker->width = l + g_latest_marker->width / 2;
             }
-            g_marker_x = c.x;
-            g_marker_y = c.y;
+            g_latest_marker->x = c.x;
+            g_latest_marker->y = c.y;
         }
-        //printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker_x, g_marker_y, g_marker_length, g_marker_width, g_marker_heading);
+        //printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_latest_marker->x, g_latest_marker->y, g_latest_marker->length, g_latest_marker->width, g_latest_marker->heading);
     }
     //printf("mouse: [%.1f, %.1f]\n", g_image_x, g_image_y);
 }
@@ -133,9 +138,9 @@ void handle_mouse_up_event(const SDL_Event& e) {
         g_drag_y = -1;
         g_image_dragging = false;
     } else if (e.button.button == SDL_BUTTON_RIGHT) {
-        g_marker_x += g_marker_offset_dx;
-        g_marker_y += g_marker_offset_dy;
-        g_marker_heading = std::fmod(g_marker_heading + g_marker_offset_heading, 360.0f);
+        g_latest_marker->x += g_marker_offset_dx;
+        g_latest_marker->y += g_marker_offset_dy;
+        g_latest_marker->heading = std::fmod(g_latest_marker->heading + g_marker_offset_heading, 360.0f);
         g_marker_offset_dx = 0.0;
         g_marker_offset_dy = 0.0;
         g_marker_offset_heading = 0.0;
@@ -143,7 +148,7 @@ void handle_mouse_up_event(const SDL_Event& e) {
         g_marker_drag_y = -1;
         g_marker_dragging = false;
         g_marker_rotating = false;
-        //printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker_x, g_marker_y, g_marker_length, g_marker_width, g_marker_heading);
+        //printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_latest_marker->x, g_latest_marker->y, g_latest_marker->length, g_latest_marker->width, g_latest_marker->heading);
     }
 }
 
@@ -165,14 +170,14 @@ void handle_mouse_move_event(const SDL_Event& e) {
     } else if (g_marker_rotating) {
         g_marker_offset_heading = (g_marker_drag_x - g_image_x) * 0.3;
     } else {
-        glm::vec2 v(g_image_x - g_marker_x, g_image_y - g_marker_y);
-        float yaw = glm::radians(g_marker_heading);
+        glm::vec2 v(g_image_x - g_latest_marker->x, g_image_y - g_latest_marker->y);
+        float yaw = glm::radians(g_latest_marker->heading);
         glm::vec2 dir(std::cos(yaw), std::sin(yaw));
         glm::vec2 normal(-std::sin(yaw), std::cos(yaw));
         float s = dot(v, dir);
         float l = dot(v, normal);
-        float length = g_marker_length / 2;
-        float width = g_marker_width / 2;
+        float length = g_latest_marker->length / 2;
+        float width = g_latest_marker->width / 2;
         float r = std::sqrt(s * s + l * l);
         float R = std::sqrt(width * width + length * length);
         //printf("marker dist: [%.1f, %.1f]\n", s, l);
@@ -242,13 +247,13 @@ return canvas.height;
 #endif
 
 void build_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
-    float yaw = glm::radians(g_marker_heading + g_marker_offset_heading);
-    glm::vec2 c(g_marker_x + g_marker_offset_dx, g_marker_y + g_marker_offset_dy);
+    float yaw = glm::radians(g_latest_marker->heading + g_marker_offset_heading);
+    glm::vec2 c(g_latest_marker->x + g_marker_offset_dx, g_latest_marker->y + g_marker_offset_dy);
     glm::vec2 dir(std::cos(yaw), std::sin(yaw));
     glm::vec2 normal(-std::sin(yaw), std::cos(yaw));
 
-    float length = g_marker_length / 2;
-    float width = g_marker_width / 2;
+    float length = g_latest_marker->length / 2;
+    float width = g_latest_marker->width / 2;
     std::array<glm::vec2, 16> pts = {
         c - length * dir - width * normal,
         c + length * dir - width * normal,
@@ -396,7 +401,7 @@ int main(int, char**)
     if (!g_line_material->build(vertex_shader_src2, fragment_shader_src2))
         return -1;
 
-#if 1
+#if 0
 #define BACKGROUND_IMG "cat.jpg"
 #else
 #define BACKGROUND_IMG "6k.png"
@@ -412,8 +417,8 @@ int main(int, char**)
     g_offset_x = (g_window_width - g_image_width * g_scale) / 2;
     g_offset_y = (g_window_height - g_image_height * g_scale) / 2;
 
-    g_marker_x = g_image_width * 0.5f;
-    g_marker_y = g_image_height * 0.5f;
+    g_latest_marker->x = g_image_width * 0.5f;
+    g_latest_marker->y = g_image_height * 0.5f;
 
     const float base_x = 0.0f;
     const float base_y = 0.0f;
