@@ -8,7 +8,7 @@ project(obb_editor CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wformat -lstdc++fs")
+set(CMAKE_CXX_FLAGS "-Wall -Wformat")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 if(MSVC)
@@ -19,6 +19,7 @@ else()
 endif()
 
 if(NOT EMSCRIPTEN)
+	set(CMAKE_CXX_COMPILER /usr/bin/g++-9)
 	find_package(SDL2 REQUIRED)
 endif(NOT EMSCRIPTEN)
 
@@ -72,7 +73,6 @@ if(EMSCRIPTEN)
 else(EMSCRIPTEN)
 	# Linux Ubuntu native executable
 	target_link_libraries(obb_editor
-		-lstdc++fs
 		dl
 		GL
 		${SDL2_LIBRARIES}

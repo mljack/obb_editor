@@ -4,9 +4,7 @@
 #include <memory>
 #include <algorithm>
 #include <functional>
-
-#include <experimental/filesystem>
-using namespace std::experimental;
+#include <filesystem>
 
 namespace {
 	bool g_rescan_files = true;
@@ -17,11 +15,11 @@ namespace {
 
 void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, const std::string& filters, bool recursive=true, char* file_filter=nullptr)
 {
-	if (!filesystem::is_directory(dir))
+	if (!std::filesystem::is_directory(dir))
 		return;
-	for (auto const& entry : filesystem::directory_iterator(dir)) {
-		filesystem::path path(entry);
-		bool is_folder = filesystem::is_directory(path);
+	for (auto const& entry : std::filesystem::directory_iterator(dir)) {
+		std::filesystem::path path(entry);
+		bool is_folder = std::filesystem::is_directory(path);
 		if (is_folder && !recursive)
 			continue;
 
@@ -144,7 +142,7 @@ void show_file_list() {
 	ImGui::BeginChild("##file_list", ImVec2(330, 700), true, ImGuiWindowFlags_HorizontalScrollbar);
 	if (g_rescan_files) {
 		std::string base_path = std::string() + folder_path;
-		if (filesystem::is_directory(base_path)) {
+		if (std::filesystem::is_directory(base_path)) {
 			g_file_list = std::make_shared<Entry>();
 			recursive_scan_folder(base_path, g_file_list, types, traverse_subfolders, file_filter);
 			recursive_sort_file_tree(g_file_list);
