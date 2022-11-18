@@ -10,9 +10,9 @@ uniform mat4 xform;
 out vec4 color;
 out vec2 TexCoord;
 void main() {
-    gl_Position = xform * vec4(position, 1.0);
-    TexCoord = vec2(aTexCoord.x, aTexCoord.y);
-    color = inputColor;
+	gl_Position = xform * vec4(position, 1.0);
+	TexCoord = vec2(aTexCoord.x, aTexCoord.y);
+	color = inputColor;
 }
 )";
 
@@ -24,7 +24,7 @@ in vec4 color;
 in vec2 TexCoord;
 uniform sampler2D texture1;
 void main() {
-    fragColor = color * texture(texture1, TexCoord); 
+	fragColor = color * texture(texture1, TexCoord); 
 }
 )";
 
@@ -36,8 +36,8 @@ uniform mat4 xform;
 
 out vec4 color;
 void main() {
-    gl_Position = xform * vec4(position, 1.0);
-    color = inputColor;
+	gl_Position = xform * vec4(position, 1.0);
+	color = inputColor;
 }
 )";
 
@@ -47,6 +47,6 @@ out vec4 fragColor;
 
 in vec4 color;
 void main() {
-    fragColor = color; 
+	fragColor = color; 
 }
 )";
