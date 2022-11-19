@@ -33,6 +33,7 @@ add_executable(obb_editor
 	third_party/imgui/backends/imgui_impl_sdl.cpp
 	third_party/imgui/backends/imgui_impl_opengl3.cpp
 	src/main.cpp
+	src/texture.cpp
 	src/ui.cpp
 )
 
@@ -54,18 +55,18 @@ if(EMSCRIPTEN)
 	)
 
 	target_link_options(obb_editor PRIVATE
-		-sUSE_SDL=2
-		-sWASM=1
-		-sUSE_WEBGL2=1
 		-sWASM=1
 		-sALLOW_MEMORY_GROWTH=1
 		-sNO_EXIT_RUNTIME=0
 		-sASSERTIONS=1
+		-sUSE_SDL=2
+		-sUSE_WEBGL2=1
 		-sMIN_WEBGL_VERSION=2
 		-sMAX_WEBGL_VERSION=2
-		-sUSE_WEBGL2=1
 		-sFORCE_FILESYSTEM
-		-sEXPORTED_RUNTIME_METHODS=ccall
+		-sASYNCIFY
+		-sEXPORTED_RUNTIME_METHODS=[ccall,cwrap]
+		#-sEXPORTED_FUNCTIONS=[_copy_buf,_main]
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/cat.jpg@/resources/cat.jpg
 		--shell-file=${CMAKE_CURRENT_LIST_DIR}/resources/shell_minimal.html
 	)
