@@ -1,4 +1,8 @@
 #include <stdio.h>
+#include <array>
+#include <fstream>
+#include <nlohmann/json.hpp>
+
 #include <SDL.h>
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
@@ -26,7 +30,6 @@
 #include "material.h"
 #include "render_item.h"
 #include "texture.h"
-#include <array>
 #include "ui.h"
 
 #if defined(__EMSCRIPTEN__)
@@ -84,6 +87,8 @@ public:
 };
 
 std::map<int, Marker> g_markers;
+bool g_is_modified = false;
+std::string g_filename;
 
 Marker* g_marker = nullptr;
 
@@ -115,11 +120,77 @@ void create_marker(float x, float y) {
 	g_marker = &g_markers.at(max_marker_idx);
 }
 
+void load_markers(const std::string& filename)
+{
+	std::ifstream in(filename);
+	if (!in.is_open())
+		return;
+	nlohmann::json j;
+	try {
+		j = nlohmann::json::parse(in);
+	}	catch (std::exception& e) {
+		std::cout << e.what() << std::endl;
+		in.close();
+		return;
+	}
+	if (j.empty())
+		return;
+
+	for (auto& markers_in_json : j) {
+		for (auto& marker_in_json : markers_in_json) {
+			Marker marker;
+			marker.id = marker_in_json.value("id", -1);
+			//marker.type = marker_in_json.value("type", 0);
+			marker.x = marker_in_json["x"].get<double>();
+			marker.y = marker_in_json["y"].get<double>();
+			//marker.frame_id = marker_in_json["frame_id"];
+			//marker.enabled = marker_in_json.value("enabled", true);
+
+			marker.width = marker_in_json.value("width", 2.4 * 10);
+			marker.length = marker_in_json.value("length", 5.0 * 10);
+			marker.heading = marker_in_json["heading_angle"].get<double>();
+			g_markers.emplace_hint(g_markers.end(), std::make_pair(marker.id, marker));
+		}
+	}
+	in.close();
+	g_is_modified = false;
+}
+
+void save_markers(const std::string& filename)
+{
+	std::ofstream out(filename);
+	if (!out.is_open())
+		return;
+
+	nlohmann::json j;
+	for (auto& [idx, marker] : g_markers) {
+		nlohmann::json objectInfo = nlohmann::json::array();
+		nlohmann::json info;
+		info["id"] = marker.id;
+		info["x"] = marker.x;
+		info["y"] = marker.y;
+		info["frame_id"] = 0;
+		info["length"] = marker.length;
+		info["width"] = marker.width;
+		// if (!marker.enabled)
+		// 	info["enabled"] = false;
+		info["heading_angle"] = marker.heading;
+		objectInfo.push_back(info);
+		j.push_back(objectInfo);
+	}
+	out << j.dump(4) << std::endl;
+	out.close();
+	g_is_modified = false;
+}
+
 void handle_key_down_event(const SDL_Event& e) {
 	if (e.key.keysym.sym == SDLK_UP) {
 		load_prev_file();
 	} else if (e.key.keysym.sym == SDLK_DOWN) {
 		load_next_file();
+	} else if (e.key.keysym.sym == SDLK_s) {
+		std::filesystem::path path(g_filename);
+		save_markers(path.replace_extension("vehicle_markers.json"));
 	}
 }
 
@@ -322,7 +393,7 @@ void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* 
 		c + glm::vec2(0.0f, width / 4),
 	};
 	GLuint base_idx = (GLuint)v_buf->size() / 7;
-	for(auto& pt : pts) {
+	for (auto& pt : pts) {
 		v_buf->push_back(pt.x);
 		v_buf->push_back(g_image_height - pt.y);
 		v_buf->push_back(10.0f);
@@ -382,7 +453,7 @@ void build_marker_geom(const Marker& m, std::vector<GLfloat>* v_buf, std::vector
 		c + glm::vec2(0.0f, width / 4),
 	};
 	GLuint base_idx = (GLuint)v_buf->size() / 7;
-	for(auto& pt : pts) {
+	for (auto& pt : pts) {
 		v_buf->push_back(pt.x);
 		v_buf->push_back(g_image_height - pt.y);
 		v_buf->push_back(10.0f);
@@ -410,6 +481,13 @@ void load_background(const std::string& file_path) {
 	g_scale = std::min(g_window_width / (float)g_image_width, g_window_height / (float)g_image_height);
 	g_offset_x = (g_window_width - g_image_width * g_scale) / 2;
 	g_offset_y = (g_window_height - g_image_height * g_scale) / 2;
+
+	g_markers.clear();
+	g_filename = file_path;
+	std::filesystem::path path(g_filename);
+	auto marker_path = path.replace_extension("vehicle_markers.json");
+	if (std::filesystem::is_regular_file(marker_path))
+		load_markers(marker_path);
 }
 
 int main(int, char**)

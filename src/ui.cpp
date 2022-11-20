@@ -57,12 +57,20 @@ void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, 
 		if (is_folder) {
 			new_folder(path.filename().c_str());
 			recursive_scan_folder(path, g_path_stack.back(), filters, recursive, file_filter);
-		}
-		else if (file_filter && strlen(file_filter) > 0 && std::string(path.filename()).find(file_filter) == std::string::npos) {
+		} else if (file_filter && strlen(file_filter) > 0 && std::string(path.filename()).find(file_filter) == std::string::npos) {
 			continue;
-		}
-		else {
-			add_file(path.c_str());
+		} else {
+			std::string filename(path.filename());
+			bool matched = false;
+			std::string::size_type pos_old = 0, pos = 0;
+			std::string s = filters + "|";
+			while (!matched && (pos = s.find('|', pos)) != std::string::npos) {
+				std::string filter(filters.substr(pos_old, pos - pos_old));
+				matched = filename.find(filter) != std::string::npos && filename.length() - filename.find(filter) == filter.length();
+				pos_old = ++pos;
+			}
+			if (matched)
+				add_file(path.c_str());
 		}
 	}
 	pop_folder();
@@ -110,8 +118,7 @@ bool load_prev_file(std::shared_ptr<Entry> base) {
 		if (child->is_folder) {
 			if (load_prev_file(child))
 				return true;
-		}
-		else {
+		} else {
 			if (g_selected_tree_node == child) {
 				if (g_prev_node) {
 					load_background(g_prev_node->path);
@@ -132,14 +139,12 @@ bool load_next_file(std::shared_ptr<Entry> base) {
 		if (child->is_folder) {
 			if (load_next_file(child))
 				return true;
-		}
-		else {
+		}	else {
 			if (g_selected_tree_node == nullptr) {
 				g_selected_tree_node = child;
 				load_background(child->path);
 				return true;
-			}
-			else if (g_selected_tree_node == child) {
+			} else if (g_selected_tree_node == child) {
 				g_selected_tree_node = nullptr;
 			}
 		}
