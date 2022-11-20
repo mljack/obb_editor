@@ -34,9 +34,9 @@
 // }
 // }
 
-EM_ASYNC_JS(unsigned char *, do_fetch, (int* num_bytes), {
-  const response = await fetch("b.png");
-	const blob = await response.blob();
+EM_ASYNC_JS(unsigned char *, do_fetch, (const char* file_path, int* num_bytes), {
+  const blob = await app.load_file(UTF8ToString(file_path));
+
 	let data = new Uint8Array(await blob.arrayBuffer());
 	//console.log(data.length);
   //console.dir(data);
@@ -49,14 +49,16 @@ EM_ASYNC_JS(unsigned char *, do_fetch, (int* num_bytes), {
 	return buf;
 });
 
-// unsigned char * load_image_file(const std::string& path, int* size) {
-// 	unsigned char* buf = do_fetch(size);
-// 	printf("size: %d\n", *size);
-// 	printf("buf: %x%x%x\n", buf[0], buf[1], buf[2]);
-// 	return buf;
-// }
+unsigned char * load_image_file2(const std::string& path, int* size) {
+	unsigned char* buf = do_fetch(path.c_str(), size);
+	//printf("size: %d\n", *size);
+	//printf("buf: %x%x%x\n", buf[0], buf[1], buf[2]);
+	return buf;
+}
 unsigned char * load_image_file(const std::string& path, int* size) {
 	FILE* fp = fopen(path.c_str(), "rb");
+	if (!fp)
+		return nullptr;
 	fseek(fp, 0L, SEEK_END);
 	*size = (int)ftell(fp);
 	unsigned char* buf = (unsigned char*)malloc(*size);
@@ -86,6 +88,10 @@ unsigned int load_texture(const std::string& file_path, int* width, int* height)
 	printf("[%s]\n", file_path.c_str());
 	int size = 0;
 	unsigned char* buf = load_image_file(file_path, &size);
+#if defined(__EMSCRIPTEN__)
+	if (!buf)	// try to load from js side if it's not a local file.
+		buf = load_image_file2(file_path, &size);
+#endif
 	if (size == 0) {
 		printf("Failed to load [%s]\n", file_path.c_str());
 	}

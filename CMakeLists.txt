@@ -70,9 +70,14 @@ if(EMSCRIPTEN)
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/cat.jpg@/resources/cat.jpg
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/bird.jpg@/images/bird.jpg
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/dog.jpg@/images/dog.jpg
-		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/topview.jpg@/images/topview.jpg
 		--shell-file=${CMAKE_CURRENT_LIST_DIR}/resources/shell_minimal.html
 	)
+
+	add_custom_target(copy-runtime-files ALL COMMAND ${CMAKE_COMMAND}
+		-E copy_directory
+		${CMAKE_SOURCE_DIR}/resources/inline-scripts
+		${CMAKE_BINARY_DIR}/inline-scripts
+		DEPENDS obb_editor)
 
 else(EMSCRIPTEN)
 	# Linux Ubuntu native executable
