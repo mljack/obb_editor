@@ -66,8 +66,11 @@ if(EMSCRIPTEN)
 		-sFORCE_FILESYSTEM
 		-sASYNCIFY
 		-sEXPORTED_RUNTIME_METHODS=[ccall,cwrap]
-		#-sEXPORTED_FUNCTIONS=[_copy_buf,_main]
+		#-sEXPORTED_FUNCTIONS=[_copy_buf,_new_filelist,_new_folder,_add_file,_main]
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/cat.jpg@/resources/cat.jpg
+		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/bird.jpg@/images/bird.jpg
+		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/dog.jpg@/images/dog.jpg
+		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/topview.jpg@/images/topview.jpg
 		--shell-file=${CMAKE_CURRENT_LIST_DIR}/resources/shell_minimal.html
 	)
 

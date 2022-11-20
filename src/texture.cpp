@@ -49,10 +49,20 @@ EM_ASYNC_JS(unsigned char *, do_fetch, (int* num_bytes), {
 	return buf;
 });
 
+// unsigned char * load_image_file(const std::string& path, int* size) {
+// 	unsigned char* buf = do_fetch(size);
+// 	printf("size: %d\n", *size);
+// 	printf("buf: %x%x%x\n", buf[0], buf[1], buf[2]);
+// 	return buf;
+// }
 unsigned char * load_image_file(const std::string& path, int* size) {
-	unsigned char* buf = do_fetch(size);
-	printf("size: %d\n", *size);
-	printf("buf: %x%x%x\n", buf[0], buf[1], buf[2]);
+	FILE* fp = fopen(path.c_str(), "rb");
+	fseek(fp, 0L, SEEK_END);
+	*size = (int)ftell(fp);
+	unsigned char* buf = (unsigned char*)malloc(*size);
+	fseek(fp, 0L, SEEK_SET);	
+	fread(buf, sizeof(char), *size, fp);
+	fclose(fp);
 	return buf;
 }
 #else

@@ -11,9 +11,40 @@ namespace {
 	std::shared_ptr<Entry> g_selected_tree_node = nullptr;
 	std::shared_ptr<Entry> g_prev_node = nullptr;
 	std::shared_ptr<Entry> g_file_list = nullptr;
+	std::vector<std::shared_ptr<Entry>> g_path_stack;
 }
 
 void load_background(const std::string& file_path);
+
+// API for filelist.
+extern "C" {
+void new_filelist() {
+	g_file_list = std::make_shared<Entry>();
+	g_path_stack.push_back(g_file_list);
+}
+
+void new_folder(const char* folder_name) {
+	std::shared_ptr<Entry> p = std::make_shared<Entry>();
+	p->path = "";
+	p->name = folder_name;
+	p->is_folder = true;
+	g_path_stack.back()->children.push_back(p);
+	g_path_stack.push_back(p);
+}
+
+void add_file(const char* path) {
+	std::filesystem::path path2(path);
+	std::shared_ptr<Entry> p = std::make_shared<Entry>();
+	p->path = path;
+	p->name = path2.filename().c_str();
+	p->is_folder = false;
+	g_path_stack.back()->children.push_back(p);
+}
+
+void pop_folder() {
+	g_path_stack.pop_back();
+}
+}
 
 void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, const std::string& filters, bool recursive=true, char* file_filter=nullptr) {
 	if (!std::filesystem::is_directory(dir))
@@ -23,18 +54,18 @@ void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, 
 		bool is_folder = std::filesystem::is_directory(path);
 		if (is_folder && !recursive)
 			continue;
-
-		std::shared_ptr<Entry> p = std::make_shared<Entry>();
-		p->path = path.c_str();
-		p->name = path.filename();
-		p->is_folder = is_folder;
-		if (p->is_folder)
-			recursive_scan_folder(p->path, p, filters, recursive, file_filter);
-		else if (file_filter && strlen(file_filter) > 0 && p->name.find(file_filter) == std::string::npos)
+		if (is_folder) {
+			new_folder(path.filename().c_str());
+			recursive_scan_folder(path, g_path_stack.back(), filters, recursive, file_filter);
+		}
+		else if (file_filter && strlen(file_filter) > 0 && std::string(path.filename()).find(file_filter) == std::string::npos) {
 			continue;
-		
-		base->children.push_back(p);
+		}
+		else {
+			add_file(path.c_str());
+		}
 	}
+	pop_folder();
 }
 
 void recursive_sort_file_tree(std::shared_ptr<Entry> base) {
@@ -144,7 +175,7 @@ void show_file_list() {
 	if (g_rescan_files) {
 		std::string base_path = std::string() + folder_path;
 		if (std::filesystem::is_directory(base_path)) {
-			g_file_list = std::make_shared<Entry>();
+			new_filelist();
 			recursive_scan_folder(base_path, g_file_list, types, traverse_subfolders, file_filter);
 			recursive_sort_file_tree(g_file_list);
 			g_rescan_files = false;
@@ -152,7 +183,7 @@ void show_file_list() {
 	}
 
 	if (!g_rescan_files && g_file_list)
-		render_file_list(g_file_list, load_background, /*flat=*/true);
+		render_file_list(g_file_list, load_background, /*flat=*/false);
 
 	ImGui::EndChild();
 	ImGui::End();
