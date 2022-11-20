@@ -68,6 +68,10 @@ unsigned char * load_image_file(const std::string& path, int* size) {
 }
 #endif
 
+void delete_texture(unsigned int texture_id) {
+	glDeleteTextures(1, &texture_id);
+}
+
 unsigned int load_texture(const std::string& file_path, int* width, int* height) {
 	printf("[%s]\n", file_path.c_str());
 	int size = 0;

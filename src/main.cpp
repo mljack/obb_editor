@@ -71,6 +71,8 @@ float g_marker_offset_heading = 0.0;
 float g_marker_drag_x = -1;
 float g_marker_drag_y = -1;
 
+unsigned int g_background_texture_id = ~0U;
+
 struct Marker {
 public:
 	int id = 0;
@@ -400,6 +402,16 @@ void build_marker_geom(const Marker& m, std::vector<GLfloat>* v_buf, std::vector
 	idx_buf->push_back(base_idx + 10); idx_buf->push_back(base_idx + 11);
 }
 
+void load_background(const std::string& file_path) {
+	if (g_background_texture_id != ~0U)
+		delete_texture(g_background_texture_id);
+
+	g_background_texture_id = load_texture(file_path, &g_image_width, &g_image_height);
+	g_scale = std::min(g_window_width / (float)g_image_width, g_window_height / (float)g_image_height);
+	g_offset_x = (g_window_width - g_image_width * g_scale) / 2;
+	g_offset_y = (g_window_height - g_image_height * g_scale) / 2;
+}
+
 int main(int, char**)
 {
 	// Setup SDL
@@ -498,35 +510,19 @@ int main(int, char**)
 #endif
 
 #if defined(__EMSCRIPTEN__)
-	unsigned int texture_id = load_texture("/resources/" BACKGROUND_IMG, &g_image_width, &g_image_height);
+	std::string default_background = "/resources/" BACKGROUND_IMG;
 #else
-	unsigned int texture_id = load_texture("../resources/" BACKGROUND_IMG, &g_image_width, &g_image_height);
+	std::string default_background = "../resources/" BACKGROUND_IMG;
 #endif
 
-	g_scale = std::min(g_window_width / (float)g_image_width, g_window_height / (float)g_image_height);
-	g_offset_x = (g_window_width - g_image_width * g_scale) / 2;
-	g_offset_y = (g_window_height - g_image_height * g_scale) / 2;
+	load_background(default_background);
 
-	// g_markers.emplace(0, Marker());
-	// g_markers.emplace(1, Marker());
-	// g_markers.emplace(2, Marker());
-	// g_markers.emplace(3, Marker());
-	// g_marker = &g_markers.at(0);
-	// if (g_marker) {
-	//     g_marker->x = g_image_width * 0.5f;
-	//     g_marker->y = g_image_height * 0.5f;
-	// }
-
-	const float base_x = 0.0f;
-	const float base_y = 0.0f;
-	const float w = g_image_width;
-	const float h = g_image_height;
 	std::vector<GLfloat> vertices2 = {
-		// x        y        z     r     g     b     a     u     v
-		base_x  , base_y  , 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.0f, 1.0f,
-		base_x+w, base_y  , 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 1.0f, 1.0f,
-		base_x+w, base_y+h, 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 1.0f, 0.0f,
-		base_x  , base_y+h, 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.0f, 0.0f,
+		// x  y     z     r     g     b     a     u     v
+		0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.0f, 1.0f,
+		1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 1.0f, 1.0f,
+		1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 1.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.0f, 0.0f,
 	};
 	std::vector<GLuint> indices2 = {
 		0, 1, 2, 0, 2, 3
@@ -602,13 +598,13 @@ int main(int, char**)
 
 		glm::mat4 model(1.0);
 		glm::mat4 view(1.0);
-		//model = glm::rotate(model, glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		model = glm::scale(model, glm::vec3(g_image_width, g_image_height, 0.0f));
 		view = glm::translate(view, glm::vec3(g_offset_x + g_offset_dx, g_offset_y + g_offset_dy, 0.0f));
-		view = view * glm::scale(model, glm::vec3(g_scale, g_scale, 1.0));
+		view = glm::scale(view, glm::vec3(g_scale, g_scale, 1.0f));
 		glm::mat4 proj = glm::ortho(0.0f, (float)g_window_width, 0.0f, (float)g_window_height, -1000.0f, 1000.0f);
 		{
 			glm::mat4 xform = proj * view * model;
-			glBindTexture(GL_TEXTURE_2D, texture_id);
+			glBindTexture(GL_TEXTURE_2D, g_background_texture_id);
 			rect.render_textured(xform);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}

@@ -13,8 +13,9 @@ namespace {
 	std::shared_ptr<Entry> g_file_list = nullptr;
 }
 
-void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, const std::string& filters, bool recursive=true, char* file_filter=nullptr)
-{
+void load_background(const std::string& file_path);
+
+void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, const std::string& filters, bool recursive=true, char* file_filter=nullptr) {
 	if (!std::filesystem::is_directory(dir))
 		return;
 	for (auto const& entry : std::filesystem::directory_iterator(dir)) {
@@ -82,7 +83,7 @@ bool load_prev_file(std::shared_ptr<Entry> base) {
 		else {
 			if (g_selected_tree_node == child) {
 				if (g_prev_node) {
-					//load_image(g_prev_node->path);
+					load_background(g_prev_node->path);
 					g_selected_tree_node = g_prev_node;
 				}
 				return true;
@@ -104,7 +105,7 @@ bool load_next_file(std::shared_ptr<Entry> base) {
 		else {
 			if (g_selected_tree_node == nullptr) {
 				g_selected_tree_node = child;
-				//load_image(child->path);
+				load_background(child->path);
 				return true;
 			}
 			else if (g_selected_tree_node == child) {
@@ -151,7 +152,7 @@ void show_file_list() {
 	}
 
 	if (!g_rescan_files && g_file_list)
-		render_file_list(g_file_list, [&](const std::string& item) {}, /*flat=*/true);
+		render_file_list(g_file_list, load_background, /*flat=*/true);
 
 	ImGui::EndChild();
 	ImGui::End();
