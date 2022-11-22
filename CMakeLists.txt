@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Debug)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
 project(obb_editor CXX)
@@ -51,12 +51,13 @@ if(EMSCRIPTEN)
 
 	target_compile_options(obb_editor PRIVATE
 		-sUSE_SDL=2
-		-sDISABLE_EXCEPTION_CATCHING=1
+		#-sDISABLE_EXCEPTION_CATCHING=1
 	)
 
 	target_link_options(obb_editor PRIVATE
 		-sWASM=1
 		-sALLOW_MEMORY_GROWTH=1
+		-sNO_DISABLE_EXCEPTION_CATCHING=1
 		-sNO_EXIT_RUNTIME=0
 		-sASSERTIONS=1
 		-sUSE_SDL=2
@@ -66,7 +67,7 @@ if(EMSCRIPTEN)
 		-sFORCE_FILESYSTEM
 		-sASYNCIFY
 		-sEXPORTED_RUNTIME_METHODS=[ccall,cwrap]
-		#-sEXPORTED_FUNCTIONS=[_copy_buf,_new_filelist,_new_folder,_add_file,_main]
+		-sEXPORTED_FUNCTIONS=[_main,_new_filelist,_add_folder,_add_file,_pop_folder]
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/cat.jpg@/resources/cat.jpg
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/bird.jpg@/images/bird.jpg
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/dog.jpg@/images/dog.jpg

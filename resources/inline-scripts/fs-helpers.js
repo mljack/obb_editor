@@ -43,11 +43,11 @@ function getFolderHandle() {
  *
  * @return {!Promise<FileSystemFileHandle>} Handle to the new file.
  */
-function getNewFileHandle() {
+function getNewFileHandle(filename) {
   // For Chrome 86 and later...
   if ('showSaveFilePicker' in window) {
     const opts = {
-      suggestedName: 'zzxxyy.txt',
+      suggestedName: filename,
       types: [{
         description: 'Text file',
         accept: {'text/plain': ['.txt']},
@@ -58,7 +58,7 @@ function getNewFileHandle() {
   // For Chrome 85 and earlier...
   const opts = {
     type: 'save-file',
-    suggestedName: 'zzxxyy.txt',
+    suggestedName: filename,
     accepts: [{
       description: 'Text file',
       extensions: ['txt'],

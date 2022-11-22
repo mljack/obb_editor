@@ -117,9 +117,67 @@ app.load_file = async (file_path) => {
   return await readFile(file);
 }
 
+app.save_file = async (file_path, content) => {
+  try {
+    if (!(file_path in app.files)) {
+      let fileHandle;
+      try {
+        fileHandle = await getNewFileHandle(file_path);
+        app.files[file_path] = fileHandle;
+      } catch (ex) {
+        if (ex.name === 'AbortError') {
+          return;
+        }
+        const msg = 'An error occured trying to open the file.';
+        console.error(msg, ex);
+        alert(msg);
+        return;
+      }
+    }
+    await writeFile(app.files[file_path], content);
+  } catch (ex) {
+    const msg = 'Unable to save file';
+    console.error(msg, ex);
+    alert(msg);
+  }
+};
+
+app.file_type_exts = new Set(["jpg", "jpeg", "png", "bmp"]);
+app.file_type_exts2 = new Set(["json"]);
+app.traverse_subfolders = false;
+
+app.recursive_scan_folder = async (folder_handle, path_id) => {
+  var path_c_str = _malloc(1024);
+  for await (const handle of folder_handle.values()) {
+    //console.log("------------------------\n")
+    const full_path = path_id + "/" + handle.name
+    console.log(handle.kind, full_path);
+    if (handle.kind == "directory") {
+      if (app.traverse_subfolders) {
+        stringToUTF8Array(handle.name, HEAP8, path_c_str, handle.name.length+1);
+        Module._add_folder(path_c_str);
+        await app.recursive_scan_folder(handle, full_path);
+        continue
+      }
+    }
+    const ext = handle.name.split(".").pop().toLowerCase();
+    if (app.file_type_exts2.has(ext))
+      app.files[full_path] = handle;
+    else if (app.file_type_exts.has(ext)) {
+      //console.log("before add_file()", handle.name);
+      stringToUTF8Array(full_path, HEAP8, path_c_str, full_path.length+1);
+      Module._add_file(path_c_str);
+      //console.log("after add_file()");
+      app.files[full_path] = handle;
+    }
+  }
+  Module._pop_folder();
+  _free(path_c_str)
+}
+
 app.openFolder = async () => {
     try {
-      var folderHandle = await getFolderHandle();
+      var folder_handle = await getFolderHandle();
     } catch (ex) {
       if (ex.name === 'AbortError') {
         return;
@@ -129,32 +187,11 @@ app.openFolder = async () => {
       alert(msg);
     }
 
-  if (!folderHandle)
+  if (!folder_handle)
     return;
 
-  const file_type_exts = new Set(["jpg", "jpeg", "png", "bmp"]);
-  
-  Module._new_filelist()
-  var path = _malloc(1024);
-  for await (const fileHandle of folderHandle.values()) {
-    console.log("------------------------\n")
-    console.log(fileHandle.kind, fileHandle.name);
-    if (fileHandle.kind !== 'file')
-      continue;
-    const ext = fileHandle.name.split(".").pop().toLowerCase();
-    if (!file_type_exts.has(ext))
-      continue;
-    stringToUTF8Array(fileHandle.name, HEAP8, path, fileHandle.name.length+1);
-    Module._add_file(path)
-    //var filePromise = fileHandle.getFile().then((file) => file.text());
-    //console.log(await filePromise);
-
-    //var file = await fileHandle.getFile();
-    //var fileHandle2 = fileHandle;
-    app.files[fileHandle.name] = fileHandle;
-  }
-  _free(path)
-  //app.readFile(file, fileHandle2);
+  Module._new_filelist();
+  app.recursive_scan_folder(folder_handle, ".");
 };
 
 

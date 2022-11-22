@@ -1,5 +1,9 @@
 #include "ui.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
+
 #include <imgui.h>
 #include <memory>
 #include <algorithm>
@@ -19,11 +23,14 @@ void load_background(const std::string& file_path);
 // API for filelist.
 extern "C" {
 void new_filelist() {
+	//printf("API: new_filelist\n");
 	g_file_list = std::make_shared<Entry>();
 	g_path_stack.push_back(g_file_list);
+	g_rescan_files = false;
 }
 
-void new_folder(const char* folder_name) {
+void add_folder(const char* folder_name) {
+	//printf("API: add_folder\n");
 	std::shared_ptr<Entry> p = std::make_shared<Entry>();
 	p->path = "";
 	p->name = folder_name;
@@ -33,6 +40,7 @@ void new_folder(const char* folder_name) {
 }
 
 void add_file(const char* path) {
+	//printf("API: add_file\n");
 	std::filesystem::path path2(path);
 	std::shared_ptr<Entry> p = std::make_shared<Entry>();
 	p->path = path;
@@ -42,6 +50,7 @@ void add_file(const char* path) {
 }
 
 void pop_folder() {
+	//printf("API: pop_folder %d\n", (int)g_path_stack.size());
 	g_path_stack.pop_back();
 }
 }
@@ -55,7 +64,7 @@ void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, 
 		if (is_folder && !recursive)
 			continue;
 		if (is_folder) {
-			new_folder(path.filename().c_str());
+			add_folder(path.filename().c_str());
 			recursive_scan_folder(path, g_path_stack.back(), filters, recursive, file_filter);
 		} else if (file_filter && strlen(file_filter) > 0 && std::string(path.filename()).find(file_filter) == std::string::npos) {
 			continue;
@@ -89,11 +98,13 @@ void render_file_list(std::shared_ptr<Entry> base, std::function<void(const std:
 {
 	for (auto& child: base->children) {
 		if (child->is_folder) {
-			if (flat) {
-				render_file_list(child, callback, flat);
-			} else if (ImGui::TreeNode(child->name.c_str())) {
-				render_file_list(child, callback, flat);
-				ImGui::TreePop();
+			if (!child->children.empty()) {
+				if (flat) {
+					render_file_list(child, callback, flat);
+				} else if (ImGui::TreeNode(child->name.c_str())) {
+					render_file_list(child, callback, flat);
+					ImGui::TreePop();
+				}
 			}
 		} else {
 			bool selected = (g_selected_tree_node == child);
@@ -170,6 +181,9 @@ void show_file_list() {
 	static bool traverse_subfolders = true;
 	if (ImGui::Checkbox("Recursive", &traverse_subfolders))
 		g_rescan_files = true;
+#if defined(__EMSCRIPTEN__)
+	EM_ASM({app.traverse_subfolders = $0;}, traverse_subfolders);
+#endif
 	ImGui::SameLine();
 	ImGui::PushItemWidth(-110.0f);
 	static char file_filter[1024] = "";

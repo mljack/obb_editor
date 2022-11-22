@@ -34,7 +34,7 @@
 // }
 // }
 
-EM_ASYNC_JS(unsigned char *, do_fetch, (const char* file_path, int* num_bytes), {
+EM_ASYNC_JS(unsigned char *, do_load, (const char* file_path, int* num_bytes), {
   const blob = await app.load_file(UTF8ToString(file_path));
 
 	let data = new Uint8Array(await blob.arrayBuffer());
@@ -50,7 +50,7 @@ EM_ASYNC_JS(unsigned char *, do_fetch, (const char* file_path, int* num_bytes), 
 });
 
 unsigned char * load_image_file2(const std::string& path, int* size) {
-	unsigned char* buf = do_fetch(path.c_str(), size);
+	unsigned char* buf = do_load(path.c_str(), size);
 	//printf("size: %d\n", *size);
 	//printf("buf: %x%x%x\n", buf[0], buf[1], buf[2]);
 	return buf;

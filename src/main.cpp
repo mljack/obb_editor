@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <array>
 #include <fstream>
+#include <sstream>
 #include <nlohmann/json.hpp>
 
 #include <SDL.h>
@@ -120,19 +121,70 @@ void create_marker(float x, float y) {
 	g_marker = &g_markers.at(max_marker_idx);
 }
 
+#if defined(__EMSCRIPTEN__)
+EM_ASYNC_JS(char *, do_load2, (const char* file_path, int* num_bytes), {
+	const path_js = UTF8ToString(file_path);
+	//console.log("do_load2", path_js);
+	//console.dir(app.files);
+	if (!(path_js in app.files)) {
+		setValue(num_bytes, 0, 'i32');
+		//console.log("do_load2 early returned");
+		return Module._malloc(1);
+	}
+
+	//console.log("do_load2 app.load_file()");
+  const blob = await app.load_file(path_js);
+	let data = new Uint8Array(await blob.arrayBuffer());
+	//console.log(data.length);
+  //console.dir(data);
+	const size = data.length * data.BYTES_PER_ELEMENT;
+	var buf = Module._malloc(size+1);
+	Module.HEAPU8.set(data, buf);
+	Module.HEAPU8.set([0], buf+size);
+	setValue(num_bytes, size, 'i32');
+	//Module.HEAPU32.set([size], num_bytes>>2);
+	//console.dir(Module.HEAPU32[num_bytes>>2]);
+	return buf;
+});
+#endif
+
 void load_markers(const std::string& filename)
 {
+	static bool once = true;
+	if (once) {
+		once = false;
+		//printf("load_markers once\n");
+		return;
+	}
+	//printf("load_markers <%s>\n", filename.c_str());
+#if defined(__EMSCRIPTEN__)
+	int size = 0;
+	char* buf = do_load2(filename.c_str(), &size);
+	//printf("load_markers size<%d>[%p]\n", size, buf);
+	if (size == 0)
+		return;
+	//printf("load_markers before json print\n");
+	//buf[size] = 0;
+	std::string j_str(buf);
+	//printf("load_markers json: @%s@\n", buf);
+#else
 	std::ifstream in(filename);
 	if (!in.is_open())
 		return;
+	std::stringstream str_stream;
+  str_stream << in.rdbuf(); //read the file
+  std::string j_str = str_stream.str();
+  in.close();
+#endif
+
 	nlohmann::json j;
 	try {
-		j = nlohmann::json::parse(in);
+		j = nlohmann::json::parse(j_str.begin(), j_str.end());
 	}	catch (std::exception& e) {
 		std::cout << e.what() << std::endl;
-		in.close();
 		return;
 	}
+
 	if (j.empty())
 		return;
 
@@ -152,16 +204,17 @@ void load_markers(const std::string& filename)
 			g_markers.emplace_hint(g_markers.end(), std::make_pair(marker.id, marker));
 		}
 	}
-	in.close();
 	g_is_modified = false;
 }
 
+#if defined(__EMSCRIPTEN__)
+EM_ASYNC_JS(void, do_save, (const char* file_path, const char* content), {
+	await app.save_file(UTF8ToString(file_path), UTF8ToString(content))
+});
+#endif
+
 void save_markers(const std::string& filename)
 {
-	std::ofstream out(filename);
-	if (!out.is_open())
-		return;
-
 	nlohmann::json j;
 	for (auto& [idx, marker] : g_markers) {
 		nlohmann::json objectInfo = nlohmann::json::array();
@@ -178,8 +231,16 @@ void save_markers(const std::string& filename)
 		objectInfo.push_back(info);
 		j.push_back(objectInfo);
 	}
-	out << j.dump(4) << std::endl;
+	std::string j_str = j.dump(2);
+#if defined(__EMSCRIPTEN__)
+	do_save(filename.c_str(), j_str.c_str());
+#else
+	std::ofstream out(filename);
+	if (!out.is_open())
+		return;
+	out << j_str << std::endl;
 	out.close();
+#endif
 	g_is_modified = false;
 }
 
@@ -486,8 +547,7 @@ void load_background(const std::string& file_path) {
 	g_filename = file_path;
 	std::filesystem::path path(g_filename);
 	auto marker_path = path.replace_extension("vehicle_markers.json");
-	if (std::filesystem::is_regular_file(marker_path))
-		load_markers(marker_path);
+	load_markers(marker_path);
 }
 
 int main(int, char**)
