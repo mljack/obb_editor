@@ -53,7 +53,8 @@ void pop_folder() {
 	//printf("API: pop_folder %d\n", (int)g_path_stack.size());
 	g_path_stack.pop_back();
 }
-}
+}	// extern "C"
+
 
 void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, const std::string& filters, bool recursive=true, char* file_filter=nullptr) {
 	if (!std::filesystem::is_directory(dir))
@@ -94,19 +95,21 @@ void recursive_sort_file_tree(std::shared_ptr<Entry> base) {
 		recursive_sort_file_tree(child);
 }
 
-void render_file_list(std::shared_ptr<Entry> base, std::function<void(const std::string& s)> callback,	bool flat=false)
+void render_file_list(std::shared_ptr<Entry> base, std::function<void(const std::string& s)> callback, bool flat=false, bool recursive=true, const char* file_filter=nullptr)
 {
 	for (auto& child: base->children) {
 		if (child->is_folder) {
-			if (!child->children.empty()) {
+			if (recursive && !child->children.empty()) {
 				if (flat) {
-					render_file_list(child, callback, flat);
+					render_file_list(child, callback, flat, file_filter);
 				} else if (ImGui::TreeNode(child->name.c_str())) {
-					render_file_list(child, callback, flat);
+					render_file_list(child, callback, flat, file_filter);
 					ImGui::TreePop();
 				}
 			}
 		} else {
+			if (file_filter && strlen(file_filter) > 0 && child->name.find(file_filter) == std::string::npos)
+				continue;
 			bool selected = (g_selected_tree_node == child);
 			if (selected)
 				ImGui::PushStyleColor(ImGuiCol_Text, { 1,0,0,1 });
@@ -172,23 +175,36 @@ void show_file_list() {
 	ImGui::SetNextWindowPos(ImVec2(10, 10));
 	//ImGui::SetNextWindowBgAlpha(0.6f);
 	ImGui::Begin("File List");
+#if defined(__EMSCRIPTEN__)
+	if (ImGui::Button("Open Folder..."))
+		EM_ASM(app.open_folder());
+#else
 	if (ImGui::Button("Refresh List"))
 		g_rescan_files = true;
+#endif
 	ImGui::SameLine();
 	static char folder_path[1024] = "images";
+	ImGui::PushItemWidth(-6.0f);
 	ImGui::InputText("##folder_path", folder_path, sizeof(folder_path));
+	ImGui::PopItemWidth();
 	char types[] = ".jpg|.jpeg|.png|.bmp|.JPG|.JPEG|.PNG|.BMP";
 	static bool traverse_subfolders = true;
-	if (ImGui::Checkbox("Recursive", &traverse_subfolders))
+	if (ImGui::Checkbox("Recursive", &traverse_subfolders)) {
+#if !defined(__EMSCRIPTEN__)
 		g_rescan_files = true;
+#endif
+	}
 #if defined(__EMSCRIPTEN__)
-	EM_ASM({app.traverse_subfolders = $0;}, traverse_subfolders);
+	EM_ASM({app.traverse_subfolders = $0}, traverse_subfolders);
 #endif
 	ImGui::SameLine();
 	ImGui::PushItemWidth(-110.0f);
 	static char file_filter[1024] = "";
-	if (ImGui::InputText("Filename Filter", file_filter, sizeof(file_filter)))
+	if (ImGui::InputText("Filename Filter", file_filter, sizeof(file_filter))) {
+#if !defined(__EMSCRIPTEN__)
 		g_rescan_files = true;
+#endif
+	}
 	ImGui::PopItemWidth();
 	ImGui::BeginChild("##file_list", ImVec2(330, 700), true, ImGuiWindowFlags_HorizontalScrollbar);
 	if (g_rescan_files) {
@@ -202,7 +218,7 @@ void show_file_list() {
 	}
 
 	if (!g_rescan_files && g_file_list)
-		render_file_list(g_file_list, load_background, /*flat=*/false);
+		render_file_list(g_file_list, load_background, /*flat=*/false, /*recursive=*/traverse_subfolders, /*file_filter=*/file_filter);
 
 	ImGui::EndChild();
 	ImGui::End();

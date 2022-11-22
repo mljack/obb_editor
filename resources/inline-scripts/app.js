@@ -39,76 +39,9 @@ const app = {
 };
 
 // Verify the APIs we need are supported, show a polite warning if not.
-if (app.hasFSAccess) {
-  //document.getElementById('not-supported').classList.add('hidden');
-} else {
-  document.getElementById('lblLegacyFS').classList.toggle('hidden', false);
-  document.getElementById('butSave').classList.toggle('hidden', true);
+if (!app.hasFSAccess) {
+  alert("Please use Chrome browser.");
 }
-
-/**
- * Creates an empty notepad with no details in it.
- */
-app.newFile = () => {
-
-  app.setText();
-  app.setFile();
-};
-
-app.setFile = (fileHandle) => {
-  if (fileHandle && fileHandle.name) {
-    app.file.handle = fileHandle;
-    app.file.name = fileHandle.name;
-    document.title = `${fileHandle.name} - ${app.appName}`;
-  } else {
-    app.file.handle = null;
-    app.file.name = fileHandle;
-    document.title = app.appName;
-  }
-};
-
-/**
- * Opens a file for reading.
- *
- * @param {FileSystemFileHandle} fileHandle File handle to read from.
- */
-app.openFile = async (fileHandle) => {
-  // If the File System Access API is not supported, use the legacy file apis.
-  if (!app.hasFSAccess) {
-    const file = await app.getFileLegacy();
-    if (file) {
-      app.readFile(file);
-    }
-    return;
-  }
-
-  // If a fileHandle is provided, verify we have permission to read/write it,
-  // otherwise, show the file open prompt and allow the user to select the file.
-  if (fileHandle) {
-    if (await verifyPermission(fileHandle, true) === false) {
-      console.error(`User did not grant permission to '${fileHandle.name}'`);
-      return;
-    }
-  } else {
-    try {
-      fileHandle = await getFileHandle();
-    } catch (ex) {
-      if (ex.name === 'AbortError') {
-        return;
-      }
-      const msg = 'An error occured trying to open the file.';
-      console.error(msg, ex);
-      alert(msg);
-    }
-  }
-
-  if (!fileHandle) {
-    return;
-  }
-  const file = await fileHandle.getFile();
-  app.readFile(file, fileHandle);
-};
-
 
 app.files = {}
 
@@ -175,7 +108,7 @@ app.recursive_scan_folder = async (folder_handle, path_id) => {
   _free(path_c_str)
 }
 
-app.openFolder = async () => {
+app.open_folder = async () => {
     try {
       var folder_handle = await getFolderHandle();
     } catch (ex) {
@@ -194,99 +127,3 @@ app.openFolder = async () => {
   app.recursive_scan_folder(folder_handle, ".");
 };
 
-
-app.openFolderFile = async (idx) => {
-  try {
-    var fileHandle = app.files[idx];
-    var file = await fileHandle.getFile()
-    //console.info(await readFile(file))
-    app.readFile(file, fileHandle)
-  } catch (ex) {
-    const msg = `An error occured reading ${app.fileName}`;
-    console.error(msg, ex);
-    alert(msg);
-  }
-};
-
-app.printFile = async (file) => {
-  try {
-    console.info(await readFile(file))
-  } catch (ex) {
-    const msg = `An error occured reading ${app.fileName}`;
-    console.error(msg, ex);
-    alert(msg);
-  }
-};
-
-/**
- * Read the file from disk.
- *
- *  @param {File} file File to read from.
- *  @param {FileSystemFileHandle} fileHandle File handle to read from.
- */
-app.readFile = async (file, fileHandle) => {
-  try {
-    app.setText(await readFile(file));
-    app.setFile(fileHandle || file.name);
-    //console.log(app.getText())
-  } catch (ex) {
-    const msg = `An error occured reading ${app.fileName}`;
-    console.error(msg, ex);
-    alert(msg);
-  }
-};
-
-/**
- * Saves a file to disk.
- */
-app.saveFile = async () => {
-  try {
-    if (!app.file.handle) {
-      return await app.saveFileAs();
-    }
-    await writeFile(app.file.handle, app.getText());
-  } catch (ex) {
-    const msg = 'Unable to save file';
-    console.error(msg, ex);
-    alert(msg);
-  }
-};
-
-/**
- * Saves a new file to disk.
- */
-app.saveFileAs = async () => {
-  if (!app.hasFSAccess) {
-    app.saveAsLegacy(app.file.name, app.getText());
-    return;
-  }
-  let fileHandle;
-  try {
-    fileHandle = await getNewFileHandle();
-  } catch (ex) {
-    if (ex.name === 'AbortError') {
-      return;
-    }
-    const msg = 'An error occured trying to open the file.';
-    console.error(msg, ex);
-    alert(msg);
-    return;
-  }
-  try {
-    await writeFile(fileHandle, app.getText());
-    app.setFile(fileHandle);
-  } catch (ex) {
-    const msg = 'Unable to save file.';
-    console.error(msg, ex);
-    alert(msg);
-    return;
-  }
-};
-
-/**
- * Attempts to close the window
- */
-app.quitApp = () => {
-
-  window.close();
-};

@@ -253,6 +253,10 @@ void handle_key_down_event(const SDL_Event& e) {
 	} else if (e.key.keysym.sym == SDLK_s) {
 		std::filesystem::path path(g_filename);
 		save_markers(path.replace_extension("vehicle_markers.json"));
+	} else if (e.key.keysym.sym == SDLK_o) {
+#if defined(__EMSCRIPTEN__)
+		EM_ASM(app.open_folder());
+#endif
 	}
 }
 
