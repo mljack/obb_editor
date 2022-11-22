@@ -67,6 +67,7 @@ bool g_marker_front_edge_ready = false;
 bool g_marker_back_edge_ready = false;
 bool g_marker_left_edge_ready = false;
 bool g_marker_right_edge_ready = false;
+bool g_marker_right_clicked = false;
 bool g_marker_dragging = false;
 bool g_marker_rotating = false;
 float g_marker_offset_dx = 0.0;
@@ -273,7 +274,28 @@ void handle_mouse_down_event(const SDL_Event& e) {
 			g_marker_dragging = true;
 		else if (g_marker_rotating_ready)
 			g_marker_rotating = true;
-		else if (g_marker) {
+		else if (g_marker)
+			g_marker_right_clicked = true;
+		//printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker->x, g_marker->y, g_marker->length, g_marker->width, g_marker->heading);
+	}
+	//printf("mouse: [%.1f, %.1f]\n", g_image_x, g_image_y);
+}
+
+void handle_mouse_up_event(const SDL_Event& e) {
+	g_image_x = (e.button.x - g_offset_x - g_offset_dx) / g_scale;
+	g_image_y = (e.button.y + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
+
+	if (e.button.button == SDL_BUTTON_LEFT) {
+		g_offset_x += g_offset_dx;
+		g_offset_y += g_offset_dy;
+		g_offset_dx = 0;
+		g_offset_dy = 0;
+		g_drag_x = -1;
+		g_drag_y = -1;
+		g_image_dragging = false;
+	} else if (e.button.button == SDL_BUTTON_RIGHT && g_marker) {
+		if (g_marker_right_clicked) {
+			g_marker_right_clicked = false;
 			glm::vec2 c(g_marker->x, g_marker->y);
 			glm::vec2 v(g_image_x, g_image_y);
 			v -= c;
@@ -297,38 +319,33 @@ void handle_mouse_down_event(const SDL_Event& e) {
 			}
 			g_marker->x = c.x;
 			g_marker->y = c.y;
+		} else {
+			g_marker->x += g_marker_offset_dx;
+			g_marker->y += g_marker_offset_dy;
+			g_marker->heading = std::fmod(g_marker->heading + g_marker_offset_heading, 360.0f);
+			g_marker_offset_dx = 0.0;
+			g_marker_offset_dy = 0.0;
+			g_marker_offset_heading = 0.0;
+			g_marker_drag_x = -1;
+			g_marker_drag_y = -1;
+			g_marker_dragging = false;
+			g_marker_rotating = false;
 		}
-		//printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker->x, g_marker->y, g_marker->length, g_marker->width, g_marker->heading);
-	}
-	//printf("mouse: [%.1f, %.1f]\n", g_image_x, g_image_y);
-}
-
-void handle_mouse_up_event(const SDL_Event& e) {
-	if (e.button.button == SDL_BUTTON_LEFT) {
-		g_offset_x += g_offset_dx;
-		g_offset_y += g_offset_dy;
-		g_offset_dx = 0;
-		g_offset_dy = 0;
-		g_drag_x = -1;
-		g_drag_y = -1;
-		g_image_dragging = false;
-	} else if (e.button.button == SDL_BUTTON_RIGHT && g_marker) {
-		g_marker->x += g_marker_offset_dx;
-		g_marker->y += g_marker_offset_dy;
-		g_marker->heading = std::fmod(g_marker->heading + g_marker_offset_heading, 360.0f);
-		g_marker_offset_dx = 0.0;
-		g_marker_offset_dy = 0.0;
-		g_marker_offset_heading = 0.0;
-		g_marker_drag_x = -1;
-		g_marker_drag_y = -1;
-		g_marker_dragging = false;
-		g_marker_rotating = false;
 		//printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker->x, g_marker->y, g_marker->length, g_marker->width, g_marker->heading);
 	}
 }
 
 void handle_mouse_move_event(const SDL_Event& e) {
 	//printf("mouse: [%d, %d]\n", e.motion.x, e.motion.y);
+	if (g_marker_right_clicked) {
+		g_marker_right_clicked = false;
+		g_marker_rotating = true;
+		g_marker_rotating_ready = true;
+		g_marker_front_edge_ready = false;
+		g_marker_back_edge_ready = false;
+		g_marker_left_edge_ready = false;
+		g_marker_right_edge_ready = false;
+	}
 	if (g_image_dragging) {
 		g_offset_dx = e.motion.x - g_drag_x;
 		g_offset_dy = -(e.motion.y - g_drag_y);
@@ -365,10 +382,10 @@ void handle_mouse_move_event(const SDL_Event& e) {
 			float marker_ratio = length / width;
 			float drag_radius = width / 2;
 			g_marker_dragging_ready = (r <= drag_radius);
-			g_marker_front_edge_ready = (r > drag_radius && s > 0 && ((s < length && ratio > marker_ratio) || (s >= length && std::abs(l) < width && s < R * 3)));
-			g_marker_back_edge_ready = (r > drag_radius && s < 0 && ((s > -length && ratio > marker_ratio) || (s <= -length && std::abs(l) < width && s > -R * 3)));
-			g_marker_left_edge_ready = (r > drag_radius && l < 0 && ((l >- width && ratio < marker_ratio) || (l <= -width && std::abs(s) < length && l > -width * 3)));
-			g_marker_right_edge_ready = (r > drag_radius && l > 0 && ((l < width && ratio < marker_ratio) || (l >= width && std::abs(s) < length && l < width * 3)));
+			g_marker_front_edge_ready = (r > drag_radius && s > 0 && ((s < length && ratio > marker_ratio) || (s >= length && std::abs(l) < width && s < R * 5)));
+			g_marker_back_edge_ready = (r > drag_radius && s < 0 && ((s > -length && ratio > marker_ratio) || (s <= -length && std::abs(l) < width && s > -R * 5)));
+			g_marker_left_edge_ready = (r > drag_radius && l < 0 && ((l >- width && ratio < marker_ratio) || (l <= -width && std::abs(s) < length && l > -width * 5)));
+			g_marker_right_edge_ready = (r > drag_radius && l > 0 && ((l < width && ratio < marker_ratio) || (l >= width && std::abs(s) < length && l < width * 5)));
 			g_marker_rotating_ready = !(g_marker_dragging_ready || g_marker_front_edge_ready || g_marker_back_edge_ready || g_marker_left_edge_ready || g_marker_right_edge_ready);
 		}
 	}
