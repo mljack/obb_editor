@@ -27,6 +27,11 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <portable-file-dialogs.h>
+
+#if defined(__EMSCRIPTEN__)
+#include "fs_helper.h"
+#endif
+
 #include "shaders.h"
 #include "material.h"
 #include "render_item.h"
@@ -42,6 +47,18 @@
 #include <functional>
 static std::function<void()> loop;
 static void main_loop() { loop(); }
+#endif
+
+#if 1
+#define BACKGROUND_IMG "cat.jpg"
+#else
+#define BACKGROUND_IMG "6k.png"
+#endif
+
+#if defined(__EMSCRIPTEN__)
+	std::string default_background = "/resources/" BACKGROUND_IMG;
+#else
+	std::string default_background = "../resources/" BACKGROUND_IMG;
 #endif
 
 int g_window_width = 1600;
@@ -122,33 +139,6 @@ void create_marker(float x, float y) {
 	g_marker = &g_markers.at(max_marker_idx);
 }
 
-#if defined(__EMSCRIPTEN__)
-EM_ASYNC_JS(char *, do_load2, (const char* file_path, int* num_bytes), {
-	const path_js = UTF8ToString(file_path);
-	//console.log("do_load2", path_js);
-	//console.dir(app.files);
-	if (!(path_js in app.files)) {
-		setValue(num_bytes, 0, 'i32');
-		//console.log("do_load2 early returned");
-		return Module._malloc(1);
-	}
-
-	//console.log("do_load2 app.load_file()");
-  const blob = await app.load_file(path_js);
-	let data = new Uint8Array(await blob.arrayBuffer());
-	//console.log(data.length);
-  //console.dir(data);
-	const size = data.length * data.BYTES_PER_ELEMENT;
-	var buf = Module._malloc(size+1);
-	Module.HEAPU8.set(data, buf);
-	Module.HEAPU8.set([0], buf+size);
-	setValue(num_bytes, size, 'i32');
-	//Module.HEAPU32.set([size], num_bytes>>2);
-	//console.dir(Module.HEAPU32[num_bytes>>2]);
-	return buf;
-});
-#endif
-
 void load_markers(const std::string& filename)
 {
 	static bool once = true;
@@ -160,7 +150,7 @@ void load_markers(const std::string& filename)
 	//printf("load_markers <%s>\n", filename.c_str());
 #if defined(__EMSCRIPTEN__)
 	int size = 0;
-	char* buf = do_load2(filename.c_str(), &size);
+	char* buf = (char*)do_load(filename.c_str(), &size);
 	//printf("load_markers size<%d>[%p]\n", size, buf);
 	if (size == 0)
 		return;
@@ -207,12 +197,6 @@ void load_markers(const std::string& filename)
 	}
 	g_is_modified = false;
 }
-
-#if defined(__EMSCRIPTEN__)
-EM_ASYNC_JS(void, do_save, (const char* file_path, const char* content), {
-	await app.save_file(UTF8ToString(file_path), UTF8ToString(content))
-});
-#endif
 
 void save_markers(const std::string& filename)
 {
@@ -612,7 +596,11 @@ int main(int, char**)
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+#if defined(__EMSCRIPTEN__)
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
+#else
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
+#endif
 	SDL_Window* window = SDL_CreateWindow("obb_editor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, g_window_width, g_window_height, window_flags);
 	SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 	SDL_GL_MakeCurrent(window, gl_context);
@@ -649,12 +637,6 @@ int main(int, char**)
 	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
 	//IM_ASSERT(font != NULL);
 
-#if defined(__EMSCRIPTEN__)
-	g_window_width = canvas_get_width();
-	g_window_height = canvas_get_height();
-#endif
-	printf("window: [%d, %d]\n", g_window_width, g_window_height);
-
 	g_background_img_material = new Material;
 	if (!g_background_img_material->build(vertex_shader_src, fragment_shader_src))
 		return -1;
@@ -688,11 +670,9 @@ int main(int, char**)
 	};
 
 	RenderItem rect(GL_TRIANGLES);
-	rect.set_material(g_background_img_material);
-	rect.update_buffers_for_textured_geoms(vertices2, indices2);
-
 	RenderItem lines(GL_LINES);
-	lines.set_material(g_line_material);
+
+	bool initialized = false;
 
 	// Our state
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -710,6 +690,7 @@ int main(int, char**)
 	while (!done)
 #endif
 	{
+
 		// Poll and handle events (inputs, window resize, etc.)
 		// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
 		// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
@@ -741,7 +722,16 @@ int main(int, char**)
 			}
 		}
 
-		// Start the Dear ImGui frame
+		if (!initialized) {
+			SDL_GL_GetDrawableSize(window, &g_window_width, &g_window_height);
+			printf("canvas size: [%d, %d]\n", g_window_width, g_window_height);
+			load_background(default_background);
+			rect.set_material(g_background_img_material);
+			rect.update_buffers_for_textured_geoms(vertices2, indices2);
+			lines.set_material(g_line_material);
+			initialized = true;
+		}
+
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
@@ -749,7 +739,7 @@ int main(int, char**)
 		render_ui();
 
 		// Rendering Viewport
-		glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
+		glViewport(0, 0, g_window_width, g_window_height);
 		//printf("[%d x %d]\n", (int)io.DisplaySize.x, (int)io.DisplaySize.y);
 		glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
 		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);

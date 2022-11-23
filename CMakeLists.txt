@@ -33,6 +33,7 @@ add_executable(obb_editor
 	third_party/imgui/backends/imgui_impl_sdl.cpp
 	third_party/imgui/backends/imgui_impl_opengl3.cpp
 	src/main.cpp
+	src/fs_helper.cpp
 	src/texture.cpp
 	src/ui.cpp
 )
