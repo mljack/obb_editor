@@ -98,11 +98,16 @@ unsigned int g_background_texture_id = ~0U;
 struct Marker {
 public:
 	int id = 0;
+	int type = 0;
 	float x = 0.0f;
 	float y = 0.0f;
 	float length = 100.0f;
 	float width = 50.0f;
 	float heading = 0.0f;
+	float score = 1.0f;
+	float certainty = 1.0f;
+	bool enabled = true;
+	bool manually_created = false;
 };
 
 std::map<int, Marker> g_markers;
@@ -183,12 +188,14 @@ void load_markers(const std::string& filename)
 		for (auto& marker_in_json : markers_in_json) {
 			Marker marker;
 			marker.id = marker_in_json.value("id", -1);
-			//marker.type = marker_in_json.value("type", 0);
+			marker.type = marker_in_json.value("type", 0);
 			marker.x = marker_in_json["x"].get<double>();
 			marker.y = marker_in_json["y"].get<double>();
 			//marker.frame_id = marker_in_json["frame_id"];
-			//marker.enabled = marker_in_json.value("enabled", true);
-
+			marker.enabled = marker_in_json.value("enabled", true);
+			marker.manually_created = marker_in_json.value("manually_created", false);
+			marker.score = marker_in_json.value("score", 1.0);
+			marker.certainty = marker_in_json.value("certainty", 1.0);
 			marker.width = marker_in_json.value("width", 2.4 * 10);
 			marker.length = marker_in_json.value("length", 5.0 * 10);
 			marker.heading = marker_in_json["heading_angle"].get<double>();
@@ -205,13 +212,21 @@ void save_markers(const std::string& filename)
 		nlohmann::json objectInfo = nlohmann::json::array();
 		nlohmann::json info;
 		info["id"] = marker.id;
+		if (marker.type != 0)
+			info["type"] = marker.type;
 		info["x"] = marker.x;
 		info["y"] = marker.y;
 		info["frame_id"] = 0;
 		info["length"] = marker.length;
 		info["width"] = marker.width;
-		// if (!marker.enabled)
-		// 	info["enabled"] = false;
+		if (!marker.enabled)
+			info["enabled"] = false;
+		if (marker.manually_created)
+			info["manually_created"] = true;
+		if (marker.score != 1.0f)
+			info["score"] = marker.score;
+		if (marker.certainty != 1.0f)
+			info["certainty"] = marker.certainty;
 		info["heading_angle"] = marker.heading;
 		objectInfo.push_back(info);
 		j.push_back(objectInfo);
@@ -497,6 +512,8 @@ void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* 
 }
 
 void build_marker_geom(const Marker& m, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
+	if (!m.enabled)
+		return;
 	float yaw = glm::radians(m.heading);
 	glm::vec2 c(m.x, m.y);
 	glm::vec2 dir(std::cos(yaw), std::sin(yaw));
@@ -599,7 +616,7 @@ int main(int, char**)
 #if defined(__EMSCRIPTEN__)
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
 #else
-	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
 #endif
 	SDL_Window* window = SDL_CreateWindow("obb_editor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, g_window_width, g_window_height, window_flags);
 	SDL_GLContext gl_context = SDL_GL_CreateContext(window);

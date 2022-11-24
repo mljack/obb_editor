@@ -90,7 +90,12 @@ void recursive_sort_file_tree(std::shared_ptr<Entry> base) {
 	if (base->children.empty())
 		return;
 	std::sort(base->children.begin(), base->children.end(),
-		[ ](std::shared_ptr<Entry> a, std::shared_ptr<Entry> b) { return a->name < b->name; });
+		[ ](std::shared_ptr<Entry> a, std::shared_ptr<Entry> b) {
+			if (a->is_folder == b->is_folder)
+				return a->name < b->name;
+			else
+				return a->is_folder > b->is_folder;
+		});
 	for (auto& child: base->children)
 		recursive_sort_file_tree(child);
 }
