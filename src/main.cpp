@@ -773,13 +773,17 @@ int main(int, char**)
 				done = true;
 			else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
 				done = true;
-			else if (event.type == SDL_KEYDOWN) {
-				if (event.key.keysym.sym == SDLK_ESCAPE)
-					done = true;
-				else
-					handle_key_down_event(event);
-			} else if (event.type == SDL_KEYUP)
-					handle_key_up_event(event);
+			else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+				done = true;
+			else if (!io.WantCaptureKeyboard) {
+				if (event.type == SDL_KEYDOWN) {
+					if (event.key.keysym.sym == SDLK_ESCAPE)
+						done = true;
+					else
+						handle_key_down_event(event);
+				} else if (event.type == SDL_KEYUP)
+						handle_key_up_event(event);
+			}
 
 			if (!io.WantCaptureMouse) {
 				if (event.type == SDL_MOUSEBUTTONDOWN)
