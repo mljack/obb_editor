@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <array>
+#include <map>
 #include <fstream>
 #include <sstream>
 #include <nlohmann/json.hpp>
@@ -61,6 +62,16 @@ static void main_loop() { loop(); }
 	std::string default_background = "../resources/" BACKGROUND_IMG;
 #endif
 
+namespace {
+glm::vec3 red = {1.0f, 0.0f, 0.0f};
+glm::vec3 yellow = {1.0f, 1.0f, 0.0f};
+glm::vec3 blue = {0.0f, 0.0f, 1.0f};
+glm::vec3 green = {0.0f, 1.0f, 0.0f};
+glm::vec3 cyan = {0.0f, 1.0f, 1.0f};
+glm::vec3 black = {0.0f, 0.0f, 0.0f};
+glm::vec3 white = {1.0f, 1.0f, 1.0f};
+};	// anonymous namespace
+
 int g_window_width = 1600;
 int g_window_height = 900;
 int g_image_width = 0;
@@ -93,6 +104,14 @@ float g_marker_offset_heading = 0.0;
 float g_marker_drag_x = -1;
 float g_marker_drag_y = -1;
 
+bool g_show_all_markers = false;
+bool g_hide_manually_created_markers = false;
+bool g_use_metric_threshold = true;
+float g_low_score_threshold = 0.5f;
+float g_high_score_threshold = 0.7f;
+float g_low_certainty_threshold = 0.3f;
+float g_high_certainty_threshold = 0.75f;
+
 unsigned int g_background_texture_id = ~0U;
 
 struct Marker {
@@ -120,7 +139,9 @@ Marker* find_marker_hovered(float x, float y) {
 	double min_d = 13.0f;
 	for (auto& [idx, m] : g_markers) {
 		float d2 = (x - m.x) * (x - m.x) + (y - m.y) * (y - m.y);
-		if (d2 < min_d * min_d)
+		if ((d2 < min_d * min_d) &&
+			(g_show_all_markers || m.enabled) &&
+			(!g_hide_manually_created_markers || !m.manually_created))
 			return &m;
 	}
 	return nullptr;
@@ -135,6 +156,7 @@ void create_marker(float x, float y) {
 	m.id = max_marker_idx;
 	m.x = x;
 	m.y = y;
+	m.manually_created = true;
 	if (g_marker) {
 		m.length = g_marker->length;
 		m.width = g_marker->width;
@@ -256,6 +278,22 @@ void handle_key_down_event(const SDL_Event& e) {
 #if defined(__EMSCRIPTEN__)
 		EM_ASM(app.open_folder());
 #endif
+	} else if (e.key.keysym.sym == SDLK_d) {
+		if (g_marker)
+			g_marker->enabled = !g_marker->enabled;
+	} else if (e.key.keysym.sym == SDLK_LSHIFT) {
+		g_show_all_markers = true;
+	} else if (e.key.keysym.sym == SDLK_LALT) {
+		g_hide_manually_created_markers = true;
+	}
+}
+
+void handle_key_up_event(const SDL_Event& e)
+{
+	if (e.key.keysym.sym == SDLK_LSHIFT) {
+		g_show_all_markers = false;
+	} else if (e.key.keysym.sym == SDLK_LALT) {
+		g_hide_manually_created_markers = false;
 	}
 }
 
@@ -280,6 +318,9 @@ void handle_mouse_down_event(const SDL_Event& e) {
 		else if (g_marker)
 			g_marker_right_clicked = true;
 		//printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker->x, g_marker->y, g_marker->length, g_marker->width, g_marker->heading);
+	} else if (e.button.button == SDL_BUTTON_MIDDLE) {
+		if (g_marker)
+			g_marker->heading = std::fmod(g_marker->heading + 180.0f, 360.0f);
 	}
 	//printf("mouse: [%.1f, %.1f]\n", g_image_x, g_image_y);
 }
@@ -511,9 +552,7 @@ void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* 
 	idx_buf->push_back(base_idx + 14); idx_buf->push_back(base_idx + 15);
 }
 
-void build_marker_geom(const Marker& m, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
-	if (!m.enabled)
-		return;
+void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
 	float yaw = glm::radians(m.heading);
 	glm::vec2 c(m.x, m.y);
 	glm::vec2 dir(std::cos(yaw), std::sin(yaw));
@@ -540,9 +579,9 @@ void build_marker_geom(const Marker& m, std::vector<GLfloat>* v_buf, std::vector
 		v_buf->push_back(pt.x);
 		v_buf->push_back(g_image_height - pt.y);
 		v_buf->push_back(10.0f);
-		v_buf->push_back(1.0f);
-		v_buf->push_back(0.0f);
-		v_buf->push_back(0.0f);
+		v_buf->push_back(color.x);
+		v_buf->push_back(color.y);
+		v_buf->push_back(color.z);
 		v_buf->push_back(1.0f);
 	}
 	idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
@@ -554,6 +593,33 @@ void build_marker_geom(const Marker& m, std::vector<GLfloat>* v_buf, std::vector
 	idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 7);
 	idx_buf->push_back(base_idx + 8); idx_buf->push_back(base_idx + 9);
 	idx_buf->push_back(base_idx + 10); idx_buf->push_back(base_idx + 11);
+}
+
+void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfloat>* vertices, std::vector<GLuint>* indices) {
+	for (const auto& [idx, m] : markers)
+		if (&m == g_marker) {
+			if (!g_show_all_markers && !m.enabled)
+				continue;
+			if (g_hide_manually_created_markers && m.manually_created)
+				continue;
+			build_latest_marker_geom(vertices, indices);
+		} else {
+			glm::vec3 c = red;
+			if (!g_show_all_markers && !m.enabled)
+				continue;
+			if (g_hide_manually_created_markers && m.manually_created)
+				continue;
+			if (g_use_metric_threshold) {
+				if (m.score < g_low_score_threshold)
+					c = yellow;
+				else if (m.score < g_high_score_threshold)
+					c = green;
+
+				if (m.certainty > g_low_certainty_threshold && m.certainty < g_high_certainty_threshold)
+					c = cyan;
+			}
+			build_marker_geom(m, c, vertices, indices);
+		}
 }
 
 void load_background(const std::string& file_path) {
@@ -725,7 +791,8 @@ int main(int, char**)
 					done = true;
 				else
 					handle_key_down_event(event);
-			}
+			} else if (event.type == SDL_KEYUP)
+					handle_key_up_event(event);
 
 			if (!io.WantCaptureMouse) {
 				if (event.type == SDL_MOUSEBUTTONDOWN)
@@ -777,11 +844,7 @@ int main(int, char**)
 		{
 			std::vector<GLfloat> vertices3;
 			std::vector<GLuint> indices3;
-			for (const auto& [idx, m] : g_markers)
-				if (&m == g_marker)
-					build_latest_marker_geom(&vertices3, &indices3);
-				else
-					build_marker_geom(m, &vertices3, &indices3);
+			build_markers_buffer(g_markers, &vertices3, &indices3);
 			lines.update_buffers_for_nontextured_geoms(vertices3, indices3);
 
 			glm::mat4 xform = proj * view;

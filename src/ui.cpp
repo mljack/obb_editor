@@ -10,6 +10,14 @@
 #include <functional>
 #include <filesystem>
 
+extern bool g_show_all_markers;
+extern bool g_hide_manually_created_markers;
+extern bool g_use_metric_threshold;
+extern float g_low_score_threshold;
+extern float g_high_score_threshold;
+extern float g_low_certainty_threshold;
+extern float g_high_certainty_threshold;
+
 namespace {
 	bool g_rescan_files = true;
 	std::shared_ptr<Entry> g_selected_tree_node = nullptr;
@@ -175,11 +183,24 @@ void show_file_list() {
 	static bool once = true;
 	if (once) {
 		once = false;
-		ImGui::SetNextWindowSize(ImVec2(350, 800));
+		ImGui::SetNextWindowSize(ImVec2(350, 950));
 	}
 	ImGui::SetNextWindowPos(ImVec2(10, 10));
 	//ImGui::SetNextWindowBgAlpha(0.6f);
 	ImGui::Begin("File List");
+
+	ImGui::PushItemWidth(-180.0f);
+	ImGui::Checkbox("Use Metric Thresholds:", &g_use_metric_threshold);
+	ImGui::SliderFloat("Low Score Threshold", &g_low_score_threshold, 0.0f, 1.0f);
+	ImGui::SliderFloat("High Score Threshold", &g_high_score_threshold, 0.0f, 1.0f);
+	ImGui::SliderFloat("Low Certainty Threshold", &g_low_certainty_threshold, 0.0f, 1.0f);
+	ImGui::SliderFloat("High Certainty Threshold", &g_high_certainty_threshold, 0.0f, 1.0f);
+	ImGui::PopItemWidth();
+
+	ImGui::Checkbox("Show ALL Markers", &g_show_all_markers);
+	ImGui::SameLine();
+	ImGui::Checkbox("Hide Manual Markers", &g_hide_manually_created_markers);
+
 #if defined(__EMSCRIPTEN__)
 	if (ImGui::Button("Open Folder..."))
 		EM_ASM(app.open_folder());
