@@ -124,6 +124,7 @@ app.open_folder = async () => {
     return;
 
   Module._new_filelist();
-  app.recursive_scan_folder(folder_handle, ".");
+  await app.recursive_scan_folder(folder_handle, ".");
+  Module._sort_filelist();
 };
 

@@ -37,6 +37,7 @@
 #include "material.h"
 #include "render_item.h"
 #include "texture.h"
+#include "marker.h"
 #include "ui.h"
 
 #if defined(__EMSCRIPTEN__)
@@ -113,21 +114,6 @@ float g_low_certainty_threshold = 0.3f;
 float g_high_certainty_threshold = 0.75f;
 
 unsigned int g_background_texture_id = ~0U;
-
-struct Marker {
-public:
-	int id = 0;
-	int type = 0;
-	float x = 0.0f;
-	float y = 0.0f;
-	float length = 100.0f;
-	float width = 50.0f;
-	float heading = 0.0f;
-	float score = 1.0f;
-	float certainty = 1.0f;
-	bool enabled = true;
-	bool manually_created = false;
-};
 
 std::map<int, Marker> g_markers;
 bool g_is_modified = false;
@@ -631,6 +617,7 @@ void load_background(const std::string& file_path) {
 	g_offset_x = (g_window_width - g_image_width * g_scale) / 2;
 	g_offset_y = (g_window_height - g_image_height * g_scale) / 2;
 
+	g_marker = nullptr;
 	g_markers.clear();
 	g_filename = file_path;
 	std::filesystem::path path(g_filename);

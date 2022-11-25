@@ -10,13 +10,7 @@
 #include <functional>
 #include <filesystem>
 
-extern bool g_show_all_markers;
-extern bool g_hide_manually_created_markers;
-extern bool g_use_metric_threshold;
-extern float g_low_score_threshold;
-extern float g_high_score_threshold;
-extern float g_low_certainty_threshold;
-extern float g_high_certainty_threshold;
+#include "marker.h"
 
 namespace {
 	bool g_rescan_files = true;
@@ -27,6 +21,7 @@ namespace {
 }
 
 void load_background(const std::string& file_path);
+void recursive_sort_file_tree(std::shared_ptr<Entry> base);
 
 // API for filelist.
 extern "C" {
@@ -61,6 +56,12 @@ void pop_folder() {
 	//printf("API: pop_folder %d\n", (int)g_path_stack.size());
 	g_path_stack.pop_back();
 }
+
+void sort_filelist() {
+	//printf("API: sort_filelist\n");
+	recursive_sort_file_tree(g_file_list);
+}
+
 }	// extern "C"
 
 
@@ -183,11 +184,20 @@ void show_file_list() {
 	static bool once = true;
 	if (once) {
 		once = false;
-		ImGui::SetNextWindowSize(ImVec2(350, 950));
+		ImGui::SetNextWindowSize(ImVec2(350, 900));
 	}
 	ImGui::SetNextWindowPos(ImVec2(10, 10));
-	//ImGui::SetNextWindowBgAlpha(0.6f);
-	ImGui::Begin("File List");
+	ImGui::SetNextWindowBgAlpha(0.8f);
+	ImGui::Begin("Side Bar");
+
+	if (g_marker) {
+		auto* m = g_marker;
+		ImGui::Text("[Current Marker Attributes]\n       ID: %4d\n        X: %7.2f\n        Y: %7.2f\n     Size: [%5.1f x %5.1f]\n  Heading:  %5.1f\n    Score:    %.3f\nCertainty:    %.3f",
+				m->id, m->x, m->y, m->length, m->width, m->heading, m->score, m->certainty);
+	} else {
+		ImGui::Text("[Current Marker Attributes]\n       ID:\n        X:\n        Y:\n     Size:\n  Heading:\n    Score:\nCertainty:");
+	}
+	ImGui::Separator();
 
 	ImGui::PushItemWidth(-180.0f);
 	ImGui::Checkbox("Use Metric Thresholds:", &g_use_metric_threshold);
@@ -232,7 +242,7 @@ void show_file_list() {
 #endif
 	}
 	ImGui::PopItemWidth();
-	ImGui::BeginChild("##file_list", ImVec2(330, 700), true, ImGuiWindowFlags_HorizontalScrollbar);
+	ImGui::BeginChild("##file_list", ImVec2(330, 560), true, ImGuiWindowFlags_HorizontalScrollbar);
 	if (g_rescan_files) {
 		std::string base_path = std::string() + folder_path;
 		if (std::filesystem::is_directory(base_path)) {
