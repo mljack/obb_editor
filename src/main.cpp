@@ -115,6 +115,7 @@ float g_high_certainty_threshold = 0.75f;
 
 unsigned int g_background_texture_id = ~0U;
 
+int g_max_marker_id = -1;
 std::map<int, Marker> g_markers;
 std::deque<Marker> g_undo_stack;
 std::deque<Marker> g_redo_stack;
@@ -136,13 +137,9 @@ Marker* find_marker_hovered(float x, float y) {
 	return nullptr;
 }
 
-void create_marker(float x, float y) {
-	int max_marker_idx = -1;
-	if (!g_markers.empty())
-		max_marker_idx = g_markers.rbegin()->first;
-	max_marker_idx++;
+Marker create_marker(float x, float y) {
 	Marker m;
-	m.id = max_marker_idx;
+	m.id = ++g_max_marker_id;
 	m.x = x;
 	m.y = y;
 	m.manually_created = true;
@@ -151,13 +148,19 @@ void create_marker(float x, float y) {
 		m.width = g_marker->width;
 		m.heading = g_marker->heading;
 	}
-	g_markers.emplace(max_marker_idx, m);
-	g_marker = &g_markers.at(max_marker_idx);
+	return m;
 }
 
 void update_marker(const Marker& updated_marker) {
+	bool new_created = (g_markers.count(updated_marker.id) == 0);
+	if (new_created)
+		g_markers.emplace(updated_marker.id, updated_marker);
+	else if (g_markers.at(updated_marker.id) == updated_marker)	// not changed.
+		return;
+
 	if (g_undo_stack.size() > 100)
 		g_undo_stack.pop_front();
+
 	auto& old_marker = g_markers.at(updated_marker.id);
 	g_undo_stack.push_back(old_marker);
 	g_redo_stack.clear();
@@ -174,7 +177,13 @@ void unapply_marker_change() {
 		auto& old_m = g_undo_stack.back();
 		auto& new_m = g_markers.at(old_m.id);
 		g_redo_stack.push_back(new_m);
-		new_m = old_m;
+		if (old_m == new_m) {	// new created
+			if (g_marker && g_marker->id == old_m.id)
+				g_marker = nullptr;
+			g_markers.erase(old_m.id);
+		} else {	// modified
+			new_m = old_m;
+		}
 		g_undo_stack.pop_back();
 	}
 }
@@ -182,6 +191,8 @@ void unapply_marker_change() {
 void apply_marker_change() {
 	if (!g_redo_stack.empty()) {
 		auto& new_m = g_redo_stack.back();
+		if (g_markers.count(new_m.id) == 0)	// new created
+			g_markers.emplace(new_m.id, new_m);
 		auto& old_m = g_markers.at(new_m.id);
 		g_undo_stack.push_back(old_m);
 		old_m = new_m;
@@ -229,10 +240,12 @@ void load_markers(const std::string& filename)
 	if (j.empty())
 		return;
 
+	g_max_marker_id = -1;
 	for (auto& markers_in_json : j) {
 		for (auto& marker_in_json : markers_in_json) {
 			Marker marker;
 			marker.id = marker_in_json.value("id", -1);
+			g_max_marker_id = std::max(g_max_marker_id, marker.id);
 			marker.type = marker_in_json.value("type", 0);
 			marker.x = marker_in_json["x"].get<double>();
 			marker.y = marker_in_json["y"].get<double>();
@@ -340,14 +353,17 @@ void handle_mouse_down_event(const SDL_Event& e) {
 		g_marker_drag_x = g_image_x;
 		g_marker_drag_y = g_image_y;
 		SDL_Keymod mod = SDL_GetModState();
-		if (mod & KMOD_LCTRL)
-			create_marker(g_image_x, g_image_y);
-		else if (g_marker_dragging_ready)
+		if (mod & KMOD_LCTRL) {
+			auto m = create_marker(g_image_x, g_image_y);
+			update_marker(m);
+			g_marker = &g_markers.at(m.id);
+		} else if (g_marker_dragging_ready) {
 			g_marker_dragging = true;
-		else if (g_marker_rotating_ready)
+		} else if (g_marker_rotating_ready) {
 			g_marker_rotating = true;
-		else if (g_marker)
+		} else if (g_marker) {
 			g_marker_right_clicked = true;
+		}
 		//printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker->x, g_marker->y, g_marker->length, g_marker->width, g_marker->heading);
 	}
 	//printf("mouse: [%.1f, %.1f]\n", g_image_x, g_image_y);
