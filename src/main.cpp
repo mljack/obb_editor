@@ -27,6 +27,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <rowmans.h>
 #include <portable-file-dialogs.h>
 
 #if defined(__EMSCRIPTEN__)
@@ -68,6 +69,7 @@ glm::vec3 red = {1.0f, 0.0f, 0.0f};
 glm::vec3 yellow = {1.0f, 1.0f, 0.0f};
 glm::vec3 blue = {0.0f, 0.0f, 1.0f};
 glm::vec3 green = {0.0f, 1.0f, 0.0f};
+glm::vec3 green2 = {0.0f, 0.8f, 0.0f};
 glm::vec3 cyan = {0.0f, 1.0f, 1.0f};
 glm::vec3 black = {0.0f, 0.0f, 0.0f};
 glm::vec3 white = {1.0f, 1.0f, 1.0f};
@@ -119,6 +121,8 @@ int g_max_marker_id = -1;
 std::map<int, Marker> g_markers;
 std::deque<Marker> g_undo_stack;
 std::deque<Marker> g_redo_stack;
+
+std::map<int, std::string> g_vehicle_type_name{ {-1,"ROI"}, {0,"car"}, {1,"bus"}, {2,"min_bus"}, {3,"truck"}, {4,"van"}, {5,"motor"}, {6,"bike"}, {7,"ped"}, {8,"big_truck"}, {9, "dont_care"} };
 
 bool g_is_modified = false;
 std::string g_filename;
@@ -329,6 +333,10 @@ void handle_key_down_event(const SDL_Event& e) {
 		unapply_marker_change();
 	} else if (e.key.keysym.sym == SDLK_c) {
 		apply_marker_change();
+	} else if (e.key.keysym.sym >= SDLK_0 && e.key.keysym.sym <= SDLK_9) {
+		auto m = *g_marker;
+		m.type = int(e.key.keysym.sym - SDLK_0);
+		update_marker(m);
 	}
 }
 
@@ -508,37 +516,40 @@ Material* g_background_img_material = nullptr;
 Material* g_line_material = nullptr;
 
 void clean_up() {
-    delete g_background_img_material;
-    delete g_line_material;
-    // Terminate GLFW, clearing any resources allocated by GLFW.
-    //glfwTerminate();
-    //OUT std::cout << "exit main" << std::endl;
+	delete g_background_img_material;
+	delete g_line_material;
+	// Terminate GLFW, clearing any resources allocated by GLFW.
+	//glfwTerminate();
+	//OUT std::cout << "exit main" << std::endl;
 }
 
-//void accumulate_buffers(double base_x, double base_y, const Mesh3D& mesh, std::vector<GLfloat>* vertices, std::vector<GLuint>* indices) {
-//	double scale = 200.0;
-//	vertices->reserve(mesh.vertices.size()*3 + vertices->size());
-//	indices->reserve(mesh.indices.size() + indices->size());
-//	GLuint base_idx = (GLuint)vertices->size() / 3;
-//	for (auto& v : mesh.vertices) {
-//		vertices->push_back((GLfloat)((v[0]-base_x)/scale));
-//		vertices->push_back((GLfloat)((v[1]-base_y)/scale));
-//		vertices->push_back((GLfloat)v[2]);
-//	}
-//	for (auto idx : mesh.indices)
-//		indices->push_back((GLuint)(base_idx + idx));
-//}
+void build_text(const std::string& s, const glm::vec3& p, const glm::vec3& color, float scale, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf)
+{
+	static char char_map[] = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'abcdefghijklmnopqrstuvwxyz{|}~";
+	float x_offset = 0;
+	for (char c : s) {
+		int char_id = 0;
+		for(; char_id < (int)sizeof(char_map); ++char_id)
+			if (char_map[char_id] == c)
+				break;
+		int strokes_count = rowmans_size[char_id];
+		auto strokes = rowmans[char_id];
 
-
-#if defined(__EMSCRIPTEN__)
-EM_JS(int, canvas_get_width, (), {
-return canvas.width;
-});
-
-EM_JS(int, canvas_get_height, (), {
-return canvas.height;
-});
-#endif
+		for (int kk = 0; kk < strokes_count; kk += 4) {
+			GLuint base_idx = (GLuint)v_buf->size() / 7;
+			v_buf->push_back(p.x + scale * (strokes[kk + 0] + x_offset));
+			v_buf->push_back(p.y + scale * (rowmans_height - strokes[kk + 1]));
+			v_buf->push_back(12.0f);
+			v_buf->push_back(color.x); v_buf->push_back(color.y); v_buf->push_back(color.z); v_buf->push_back(1.0f);
+			v_buf->push_back(p.x + scale * (strokes[kk + 2] + x_offset));
+			v_buf->push_back(p.y + scale * (rowmans_height - strokes[kk + 3]));
+			v_buf->push_back(12.0f);
+			v_buf->push_back(color.x); v_buf->push_back(color.y); v_buf->push_back(color.z); v_buf->push_back(1.0f);
+			idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
+		}
+		x_offset += rowmans_width[char_id];
+	}
+}
 
 void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
 	float yaw = glm::radians(g_marker->heading + g_marker_offset_heading);
@@ -548,7 +559,8 @@ void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* 
 
 	float length = g_marker->length / 2;
 	float width = g_marker->width / 2;
-	std::array<glm::vec2, 16> pts = {
+	float scale = 10.0f;
+	std::array<glm::vec2, 20> pts = {
 		c - length * dir - width * normal,
 		c + length * dir - width * normal,
 		c + length * dir - width * normal,
@@ -561,10 +573,14 @@ void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* 
 		c + (length + width / 2) * dir,
 		c + (length + width / 4) * dir + width / 4 * normal,
 		c + (length + width / 4) * dir - width / 4 * normal,
-		c - glm::vec2(width / 4, 0.0f),
-		c + glm::vec2(width / 4, 0.0f),
-		c - glm::vec2(0.0f, width / 4),
-		c + glm::vec2(0.0f, width / 4),
+		c - glm::vec2(scale, 0.0f),
+		c + glm::vec2(scale, 0.0f),
+		c - glm::vec2(0.0f, scale),
+		c + glm::vec2(0.0f, scale),
+		c - glm::vec2(scale/4, 0.0f),
+		c - glm::vec2(0.0f, scale/4),
+		c + glm::vec2(scale/4, 0.0f),
+		c + glm::vec2(0.0f, scale/4),
 	};
 	GLuint base_idx = (GLuint)v_buf->size() / 7;
 	for (auto& pt : pts) {
@@ -573,35 +589,36 @@ void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* 
 		v_buf->push_back(10.0f);
 		auto idx = &pt-pts.data();
 		bool ready = false;
-		ready = ready || (g_marker_dragging_ready && idx >=12 && idx <= 15);
+		ready = ready || (g_marker_dragging_ready && idx >=12 && idx <= 19);
 		ready = ready || (g_marker_front_edge_ready && idx >=2 && idx <= 3);
 		ready = ready || (g_marker_back_edge_ready && idx >= 6 && idx <= 7);
 		ready = ready || (g_marker_left_edge_ready && idx >= 0 && idx <= 1);
 		ready = ready || (g_marker_right_edge_ready && idx >= 4 && idx <= 5);
 		ready = ready || (g_marker_rotating_ready && idx >= 8 && idx <= 11);
 		if (ready) {
-			v_buf->push_back(1.0f);
-			v_buf->push_back(0.0f);
-			v_buf->push_back(0.0f);
-			v_buf->push_back(1.0f);
+			v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
 		} else {
-			v_buf->push_back(0.0f);
-			v_buf->push_back(0.0f);
-			v_buf->push_back(1.0f);
-			v_buf->push_back(1.0f);
+			v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f); v_buf->push_back(1.0f);
 		}
 	}
+	// box
 	idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
 	idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
 	idx_buf->push_back(base_idx + 4); idx_buf->push_back(base_idx + 5);
 	idx_buf->push_back(base_idx + 6); idx_buf->push_back(base_idx + 7);
-	//idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 1);
-	//idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 2);
+
+	// arrow
 	idx_buf->push_back(base_idx + 8); idx_buf->push_back(base_idx + 9);
 	idx_buf->push_back(base_idx + 9); idx_buf->push_back(base_idx + 10);
 	idx_buf->push_back(base_idx + 9); idx_buf->push_back(base_idx + 11);
+
+	// center
 	idx_buf->push_back(base_idx + 12); idx_buf->push_back(base_idx + 13);
 	idx_buf->push_back(base_idx + 14); idx_buf->push_back(base_idx + 15);
+	idx_buf->push_back(base_idx + 16); idx_buf->push_back(base_idx + 17);
+	idx_buf->push_back(base_idx + 17); idx_buf->push_back(base_idx + 18);
+	idx_buf->push_back(base_idx + 18); idx_buf->push_back(base_idx + 19);
+	idx_buf->push_back(base_idx + 19); idx_buf->push_back(base_idx + 16);
 }
 
 void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
@@ -612,6 +629,7 @@ void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfl
 
 	float length = m.length / 2;
 	float width = m.width / 2;
+	float scale = 10.0f;
 	std::array<glm::vec2, 16> pts = {
 		c - length * dir - width * normal,
 		c + length * dir - width * normal,
@@ -621,42 +639,59 @@ void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfl
 		c + (length + width / 2) * dir,
 		c + (length + width / 4) * dir + width / 4 * normal,
 		c + (length + width / 4) * dir - width / 4 * normal,
-		c - glm::vec2(width / 4, 0.0f),
-		c + glm::vec2(width / 4, 0.0f),
-		c - glm::vec2(0.0f, width / 4),
-		c + glm::vec2(0.0f, width / 4),
+		c - glm::vec2(scale, 0.0f),
+		c + glm::vec2(scale, 0.0f),
+		c - glm::vec2(0.0f, scale),
+		c + glm::vec2(0.0f, scale),
+		c - glm::vec2(scale/4, 0.0f),
+		c - glm::vec2(0.0f, scale/4),
+		c + glm::vec2(scale/4, 0.0f),
+		c + glm::vec2(0.0f, scale/4),
 	};
 	GLuint base_idx = (GLuint)v_buf->size() / 7;
 	for (auto& pt : pts) {
 		v_buf->push_back(pt.x);
 		v_buf->push_back(g_image_height - pt.y);
 		v_buf->push_back(10.0f);
-		v_buf->push_back(color.x);
-		v_buf->push_back(color.y);
-		v_buf->push_back(color.z);
-		v_buf->push_back(1.0f);
+		v_buf->push_back(color.x); v_buf->push_back(color.y); v_buf->push_back(color.z); v_buf->push_back(1.0f);
 	}
+	// box
 	idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
 	idx_buf->push_back(base_idx + 1); idx_buf->push_back(base_idx + 2);
 	idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
 	idx_buf->push_back(base_idx + 3); idx_buf->push_back(base_idx + 0);
+
+	// arrow
 	idx_buf->push_back(base_idx + 4); idx_buf->push_back(base_idx + 5);
 	idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 6);
 	idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 7);
+
+	// center
 	idx_buf->push_back(base_idx + 8); idx_buf->push_back(base_idx + 9);
 	idx_buf->push_back(base_idx + 10); idx_buf->push_back(base_idx + 11);
+	idx_buf->push_back(base_idx + 12); idx_buf->push_back(base_idx + 13);
+	idx_buf->push_back(base_idx + 13); idx_buf->push_back(base_idx + 14);
+	idx_buf->push_back(base_idx + 14); idx_buf->push_back(base_idx + 15);
+	idx_buf->push_back(base_idx + 15); idx_buf->push_back(base_idx + 12);
 }
 
-void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfloat>* vertices, std::vector<GLuint>* indices) {
-	for (const auto& [idx, m] : markers)
+void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
+	std::vector<GLfloat>* v_buf2, std::vector<GLuint>* idx_buf2, std::vector<GLfloat>* v_buf3, std::vector<GLuint>* idx_buf3) {
+	for (const auto& [idx, m] : markers) {
+		auto& v_type = g_vehicle_type_name.at(m.type);
+		glm::vec3 c = red;
 		if (&m == g_marker) {
 			if (!g_show_all_markers && !m.enabled)
 				continue;
 			if (g_hide_manually_created_markers && m.manually_created)
 				continue;
-			build_latest_marker_geom(vertices, indices);
+			build_latest_marker_geom(v_buf, idx_buf);
+			if (m.type != 0) {
+				glm::vec3 p(m.x + g_marker_offset_dx - 5.0f, g_image_height - m.y - g_marker_offset_dy - 5.0f, 0.0f);
+				build_text(v_type, p, green2, 1.0f, v_buf2, idx_buf2);
+				build_text(v_type, p, black, 1.0f, v_buf3, idx_buf3);
+			}
 		} else {
-			glm::vec3 c = red;
 			if (!g_show_all_markers && !m.enabled)
 				continue;
 			if (g_hide_manually_created_markers && m.manually_created)
@@ -670,8 +705,14 @@ void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfl
 				if (m.certainty > g_low_certainty_threshold && m.certainty < g_high_certainty_threshold)
 					c = cyan;
 			}
-			build_marker_geom(m, c, vertices, indices);
+			build_marker_geom(m, c, v_buf, idx_buf);
+			if (m.type != 0) {
+				glm::vec3 p(m.x - 5.0f, g_image_height - m.y - 5.0f, 0.0f);
+				build_text(v_type, p, green2, 1.0f, v_buf2, idx_buf2);
+				build_text(v_type, p, black, 1.0f, v_buf3, idx_buf3);
+			}
 		}
+	}
 }
 
 void load_background(const std::string& file_path) {
@@ -732,6 +773,9 @@ int main(int, char**)
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 2);
+
 #if defined(__EMSCRIPTEN__)
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
 #else
@@ -807,6 +851,8 @@ int main(int, char**)
 
 	RenderItem rect(GL_TRIANGLES);
 	RenderItem lines(GL_LINES);
+	RenderItem wide_lines(GL_LINES);
+	RenderItem wide_lines2(GL_LINES);
 
 	bool initialized = false;
 
@@ -870,6 +916,8 @@ int main(int, char**)
 			rect.set_material(g_background_img_material);
 			rect.update_buffers_for_textured_geoms(vertices2, indices2);
 			lines.set_material(g_line_material);
+			wide_lines.set_material(g_line_material);
+			wide_lines2.set_material(g_line_material);
 			initialized = true;
 		}
 
@@ -899,15 +947,23 @@ int main(int, char**)
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 		{
-			std::vector<GLfloat> vertices3;
-			std::vector<GLuint> indices3;
-			build_markers_buffer(g_markers, &vertices3, &indices3);
-			lines.update_buffers_for_nontextured_geoms(vertices3, indices3);
+			std::vector<GLfloat> line_buf, wide_line_buf, wide_line_buf2;
+			std::vector<GLuint> line_idx, wide_line_idx, wide_line_idx2;
+			build_markers_buffer(g_markers, &line_buf, &line_idx, &wide_line_buf, &wide_line_idx, &wide_line_buf2, &wide_line_idx2);
+			lines.update_buffers_for_nontextured_geoms(line_buf, line_idx);
+			wide_lines.update_buffers_for_nontextured_geoms(wide_line_buf, wide_line_idx);
+			wide_lines2.update_buffers_for_nontextured_geoms(wide_line_buf2, wide_line_idx2);
 
+			glDisable(GL_DEPTH_TEST);
 			glm::mat4 xform = proj * view;
+			glLineWidth(6.0f);
+			wide_lines2.render_nontextured(xform);
+			glLineWidth(3.0f);
+			wide_lines.render_nontextured(xform);
 			glLineWidth(2.0f);
 			lines.render_nontextured(xform);
 			glLineWidth(1.0f);
+			glEnable(GL_DEPTH_TEST);
 		}
 
 		// Rendering GUI
