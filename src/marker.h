@@ -23,3 +23,4 @@ extern float g_high_score_threshold;
 extern float g_low_certainty_threshold;
 extern float g_high_certainty_threshold;
 extern Marker* g_marker;
+extern bool g_is_modified;

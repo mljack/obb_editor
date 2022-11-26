@@ -116,6 +116,9 @@ float g_high_certainty_threshold = 0.75f;
 unsigned int g_background_texture_id = ~0U;
 
 std::map<int, Marker> g_markers;
+std::deque<Marker> g_undo_stack;
+std::deque<Marker> g_redo_stack;
+
 bool g_is_modified = false;
 std::string g_filename;
 
@@ -150,6 +153,40 @@ void create_marker(float x, float y) {
 	}
 	g_markers.emplace(max_marker_idx, m);
 	g_marker = &g_markers.at(max_marker_idx);
+}
+
+void update_marker(const Marker& updated_marker) {
+	if (g_undo_stack.size() > 100)
+		g_undo_stack.pop_front();
+	auto& old_marker = g_markers.at(updated_marker.id);
+	g_undo_stack.push_back(old_marker);
+	g_redo_stack.clear();
+	old_marker = updated_marker;
+}
+
+void clear_marker_changes() {
+	g_undo_stack.clear();
+	g_redo_stack.clear();
+}
+
+void unapply_marker_change() {
+	if (!g_undo_stack.empty()) {
+		auto& old_m = g_undo_stack.back();
+		auto& new_m = g_markers.at(old_m.id);
+		g_redo_stack.push_back(new_m);
+		new_m = old_m;
+		g_undo_stack.pop_back();
+	}
+}
+
+void apply_marker_change() {
+	if (!g_redo_stack.empty()) {
+		auto& new_m = g_redo_stack.back();
+		auto& old_m = g_markers.at(new_m.id);
+		g_undo_stack.push_back(old_m);
+		old_m = new_m;
+		g_redo_stack.pop_back();
+	}
 }
 
 void load_markers(const std::string& filename)
@@ -211,6 +248,7 @@ void load_markers(const std::string& filename)
 		}
 	}
 	g_is_modified = false;
+	clear_marker_changes();
 }
 
 void save_markers(const std::string& filename)
@@ -265,12 +303,19 @@ void handle_key_down_event(const SDL_Event& e) {
 		EM_ASM(app.open_folder());
 #endif
 	} else if (e.key.keysym.sym == SDLK_d) {
-		if (g_marker)
-			g_marker->enabled = !g_marker->enabled;
+		if (g_marker) {
+			auto m = *g_marker;
+			m.enabled = !m.enabled;
+			update_marker(m);
+		}
 	} else if (e.key.keysym.sym == SDLK_LSHIFT) {
 		g_show_all_markers = true;
 	} else if (e.key.keysym.sym == SDLK_LALT) {
 		g_hide_manually_created_markers = true;
+	} else if (e.key.keysym.sym == SDLK_z) {
+		unapply_marker_change();
+	} else if (e.key.keysym.sym == SDLK_c) {
+		apply_marker_change();
 	}
 }
 
@@ -304,9 +349,6 @@ void handle_mouse_down_event(const SDL_Event& e) {
 		else if (g_marker)
 			g_marker_right_clicked = true;
 		//printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker->x, g_marker->y, g_marker->length, g_marker->width, g_marker->heading);
-	} else if (e.button.button == SDL_BUTTON_MIDDLE) {
-		if (g_marker)
-			g_marker->heading = std::fmod(g_marker->heading + 180.0f, 360.0f);
 	}
 	//printf("mouse: [%.1f, %.1f]\n", g_image_x, g_image_y);
 }
@@ -324,35 +366,36 @@ void handle_mouse_up_event(const SDL_Event& e) {
 		g_drag_y = -1;
 		g_image_dragging = false;
 	} else if (e.button.button == SDL_BUTTON_RIGHT && g_marker) {
+		auto m = *g_marker;
 		if (g_marker_right_clicked) {
 			g_marker_right_clicked = false;
-			glm::vec2 c(g_marker->x, g_marker->y);
+			glm::vec2 c(m.x, m.y);
 			glm::vec2 v(g_image_x, g_image_y);
 			v -= c;
-			float yaw = glm::radians(g_marker->heading);
+			float yaw = glm::radians(m.heading);
 			glm::vec2 dir(std::cos(yaw), std::sin(yaw));
 			glm::vec2 normal(-std::sin(yaw), std::cos(yaw));
 			float s = dot(v, dir);
 			float l = dot(v, normal);
 			if (g_marker_front_edge_ready) {
-				c += (s - g_marker->length / 2) / 2 * dir;
-				g_marker->length = s + g_marker->length / 2;
+				c += (s - m.length / 2) / 2 * dir;
+				m.length = s + m.length / 2;
 			} else if (g_marker_back_edge_ready) {
-				c += (s + g_marker->length / 2) / 2 * dir;
-				g_marker->length = -s + g_marker->length / 2;
+				c += (s + m.length / 2) / 2 * dir;
+				m.length = -s + m.length / 2;
 			} else if (g_marker_left_edge_ready) {
-				c += (l + g_marker->width / 2) / 2 * normal;
-				g_marker->width = -l + g_marker->width / 2;
+				c += (l + m.width / 2) / 2 * normal;
+				m.width = -l + m.width / 2;
 			} else if (g_marker_right_edge_ready) {
-				c += (l - g_marker->width / 2) / 2 * normal;
-				g_marker->width = l + g_marker->width / 2;
+				c += (l - m.width / 2) / 2 * normal;
+				m.width = l + m.width / 2;
 			}
-			g_marker->x = c.x;
-			g_marker->y = c.y;
+			m.x = c.x;
+			m.y = c.y;
 		} else {
-			g_marker->x += g_marker_offset_dx;
-			g_marker->y += g_marker_offset_dy;
-			g_marker->heading = std::fmod(g_marker->heading + g_marker_offset_heading, 360.0f);
+			m.x += g_marker_offset_dx;
+			m.y += g_marker_offset_dy;
+			m.heading = std::fmod(m.heading + g_marker_offset_heading, 360.0f);
 			g_marker_offset_dx = 0.0;
 			g_marker_offset_dy = 0.0;
 			g_marker_offset_heading = 0.0;
@@ -361,7 +404,14 @@ void handle_mouse_up_event(const SDL_Event& e) {
 			g_marker_dragging = false;
 			g_marker_rotating = false;
 		}
+		update_marker(m);
+		g_is_modified = true;
 		//printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker->x, g_marker->y, g_marker->length, g_marker->width, g_marker->heading);
+	} else if (e.button.button == SDL_BUTTON_MIDDLE && g_marker) {
+		auto m = *g_marker;
+		m.heading = std::fmod(m.heading + 180.0f, 360.0f);
+		update_marker(m);
+		g_is_modified = true;
 	}
 }
 
@@ -390,7 +440,7 @@ void handle_mouse_move_event(const SDL_Event& e) {
 		g_marker_offset_dy = g_image_y - g_marker_drag_y;
 		//printf("marker dxdy: [%.1f, %.1f]\n", g_marker_offset_dx, g_marker_offset_dy);
 	} else if (g_marker_rotating) {
-		g_marker_offset_heading = (g_marker_drag_x - g_image_x) * 0.3;
+		g_marker_offset_heading = (g_marker_drag_x - g_image_x) * g_scale * 0.1;
 	} else {
 		auto* m = find_marker_hovered(g_image_x, g_image_y);
 		if (m)

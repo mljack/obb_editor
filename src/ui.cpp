@@ -188,7 +188,10 @@ void show_file_list() {
 	}
 	ImGui::SetNextWindowPos(ImVec2(10, 10));
 	ImGui::SetNextWindowBgAlpha(0.8f);
-	ImGui::Begin("Side Bar");
+	char title[] = "SideBar ( )";
+	if (g_is_modified)
+		title[9] = '*';
+	ImGui::Begin(title);
 
 	if (g_marker) {
 		auto* m = g_marker;
