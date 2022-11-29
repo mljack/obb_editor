@@ -47,7 +47,7 @@ void add_file(const char* path) {
 	std::filesystem::path path2(path);
 	std::shared_ptr<Entry> p = std::make_shared<Entry>();
 	p->path = path;
-	p->name = path2.filename().c_str();
+	p->name = path2.filename().string();
 	p->is_folder = false;
 	g_path_stack.back()->children.push_back(p);
 }
@@ -74,12 +74,12 @@ void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, 
 		if (is_folder && !recursive)
 			continue;
 		if (is_folder) {
-			add_folder(path.filename().c_str());
-			recursive_scan_folder(path, g_path_stack.back(), filters, recursive, file_filter);
-		} else if (file_filter && strlen(file_filter) > 0 && std::string(path.filename()).find(file_filter) == std::string::npos) {
+			add_folder(path.filename().string().c_str());
+			recursive_scan_folder(path.string(), g_path_stack.back(), filters, recursive, file_filter);
+		} else if (file_filter && strlen(file_filter) > 0 && path.filename().string().find(file_filter) == std::string::npos) {
 			continue;
 		} else {
-			std::string filename(path.filename());
+			std::string filename(path.filename().string());
 			bool matched = false;
 			std::string::size_type pos_old = 0, pos = 0;
 			std::string s = filters + "|";
@@ -89,7 +89,7 @@ void recursive_scan_folder(const std::string& dir, std::shared_ptr<Entry> base, 
 				pos_old = ++pos;
 			}
 			if (matched)
-				add_file(path.c_str());
+				add_file(path.string().c_str());
 		}
 	}
 	pop_folder();

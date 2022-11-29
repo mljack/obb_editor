@@ -7,21 +7,39 @@ endif()
 project(obb_editor CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-
 set(CMAKE_CXX_FLAGS "-Wall -Wformat")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 if(MSVC)
 	SET(CMAKE_CXX_FLAGS "/EHsc")
 	SET(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS 1)
-else()
+	set(SDL2_DIR "third_party/SDL2/cmake")
+	find_package(SDL2 REQUIRED)
+endif()
+
+if(UNIX)
+	set(CMAKE_CXX_COMPILER /usr/bin/g++-9)
+	set(CMAKE_CXX_FLAGS_DEBUG "-g")
+	find_package(SDL2 REQUIRED)
+endif()
+
+if(EMSCRIPTEN)
 	set(CMAKE_CXX_FLAGS_DEBUG "-g")
 endif()
 
-if(NOT EMSCRIPTEN)
-	set(CMAKE_CXX_COMPILER /usr/bin/g++-9)
-	find_package(SDL2 REQUIRED)
-endif(NOT EMSCRIPTEN)
+include_directories(
+	${SDL2_INCLUDE_DIRS}
+	third_party
+	third_party/glm
+	third_party/imgui
+	third_party/imgui/backends
+)
+
+if(MSVC)
+include_directories(
+	third_party/glew/include
+)
+endif()
 
 add_executable(obb_editor
 	third_party/pugixml/pugixml.cpp
@@ -38,13 +56,32 @@ add_executable(obb_editor
 	src/ui.cpp
 )
 
-include_directories(
-	${SDL2_INCLUDE_DIRS}
-	third_party
-	third_party/glm
-	third_party/imgui
-	third_party/imgui/backends
-)
+if(MSVC)
+	target_link_libraries(obb_editor
+		${SDL2_LIBRARIES}
+		opengl32.lib
+		${PROJECT_SOURCE_DIR}/third_party/glew/lib/Release/Win32/glew32.lib
+	)
+
+	set(DLLS
+		${CMAKE_SOURCE_DIR}/third_party/glew/bin/Release/Win32/glew32.dll
+		${CMAKE_SOURCE_DIR}/third_party/SDL2/lib/x86/SDL2.dll
+	)
+
+	foreach(file_i ${DLLS})
+		add_custom_command(TARGET obb_editor POST_BUILD COMMAND ${CMAKE_COMMAND}
+			ARGS -E copy ${file_i} ${CMAKE_BINARY_DIR})
+	endforeach(file_i)
+endif()
+
+if(UNIX)
+	# Linux Ubuntu native executable
+	target_link_libraries(obb_editor
+		dl
+		GL
+		${SDL2_LIBRARIES}
+	)
+endif(UNIX)
 
 if(EMSCRIPTEN)
 	# WebAssembly
@@ -81,11 +118,4 @@ if(EMSCRIPTEN)
 		${CMAKE_BINARY_DIR}/inline-scripts
 		DEPENDS obb_editor)
 
-else(EMSCRIPTEN)
-	# Linux Ubuntu native executable
-	target_link_libraries(obb_editor
-		dl
-		GL
-		${SDL2_LIBRARIES}
-	)
-endif(EMSCRIPTEN)
+endif()

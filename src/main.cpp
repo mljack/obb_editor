@@ -1,22 +1,24 @@
 #include <stdio.h>
 #include <array>
 #include <map>
+#include <deque>
 #include <fstream>
 #include <sstream>
 #include <nlohmann/json.hpp>
 
 #include <SDL.h>
 #if defined(__EMSCRIPTEN__)
-#include <emscripten.h>
-#include <SDL_opengles2.h>
+	#include <emscripten.h>
+	#include <SDL_opengles2.h>
 #elif defined(IMGUI_IMPL_OPENGL_ES2)
-#include <SDL_opengles2.h>
+	
 #else
-
-#define GL_GLEXT_PROTOTYPES
-
-#include <SDL_opengl.h>
-//#include <SDL_opengl_glext.h>
+	#if defined(_WIN32)
+		#include <gl\glew.h>
+	#endif
+	#define GL_GLEXT_PROTOTYPES
+	#include <SDL_opengl.h>
+	//#include <SDL_opengl_glext.h>
 #endif
 
 #include <imgui.h>
@@ -28,10 +30,9 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <rowmans.h>
-#include <portable-file-dialogs.h>
 
 #if defined(__EMSCRIPTEN__)
-#include "fs_helper.h"
+	#include "fs_helper.h"
 #endif
 
 #include "shaders.h"
@@ -40,6 +41,7 @@
 #include "texture.h"
 #include "marker.h"
 #include "ui.h"
+
 
 #if defined(__EMSCRIPTEN__)
 // Emscripten wants to run the mainloop because of the way the browser is single threaded.
@@ -237,7 +239,7 @@ void load_markers(const std::string& filename)
 	try {
 		j = nlohmann::json::parse(j_str.begin(), j_str.end());
 	}	catch (std::exception& e) {
-		std::cout << e.what() << std::endl;
+		printf("Exception caught: %s\n", e.what());
 		return;
 	}
 
@@ -314,7 +316,7 @@ void handle_key_down_event(const SDL_Event& e) {
 		load_next_file();
 	} else if (e.key.keysym.sym == SDLK_s) {
 		std::filesystem::path path(g_filename);
-		save_markers(path.replace_extension("vehicle_markers.json"));
+		save_markers(path.replace_extension("vehicle_markers.json").string());
 	} else if (e.key.keysym.sym == SDLK_o) {
 #if defined(__EMSCRIPTEN__)
 		EM_ASM(app.open_folder());
@@ -728,7 +730,7 @@ void load_background(const std::string& file_path) {
 	g_markers.clear();
 	g_filename = file_path;
 	std::filesystem::path path(g_filename);
-	auto marker_path = path.replace_extension("vehicle_markers.json");
+	auto marker_path = path.replace_extension("vehicle_markers.json").string();
 	load_markers(marker_path);
 }
 
@@ -778,13 +780,27 @@ int main(int, char**)
 
 #if defined(__EMSCRIPTEN__)
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
-#else
+#elif defined(__linux__)
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
+#elif defined(_WIN32)
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_MAXIMIZED);
+#else
+	#error Unsupported platform
 #endif
 	SDL_Window* window = SDL_CreateWindow("obb_editor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, g_window_width, g_window_height, window_flags);
 	SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_GL_SetSwapInterval(1); // Enable vsync
+
+#if defined(_WIN32)
+	//Initialize GLEW
+	glewExperimental = GL_TRUE;
+	GLenum glewError = glewInit();
+	if (glewError != GLEW_OK) {
+		printf("Error initializing GLEW! %s\n", glewGetErrorString(glewError));
+		return -1;
+	}
+#endif
 
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
