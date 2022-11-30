@@ -92,7 +92,8 @@ float g_offset_dx = 0.0;
 float g_offset_dy = 0.0;
 float g_drag_x = -1;
 float g_drag_y = -1;
-float g_scale = 1.0;
+float g_scale = 1.0f;
+float g_device_pixel_ratio = 1.0f;
 
 bool g_marker_dragging_ready = false;
 bool g_marker_rotating_ready = false;
@@ -352,12 +353,12 @@ void handle_key_up_event(const SDL_Event& e)
 }
 
 void handle_mouse_down_event(const SDL_Event& e) {
-	g_image_x = (e.button.x - g_offset_x - g_offset_dx) / g_scale;
-	g_image_y = (e.button.y + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
+	g_image_x = (e.button.x * g_device_pixel_ratio - g_offset_x - g_offset_dx) / g_scale;
+	g_image_y = (e.button.y * g_device_pixel_ratio + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
 
 	if (e.button.button == SDL_BUTTON_LEFT) {
-		g_drag_x = e.button.x;
-		g_drag_y = e.button.y;
+		g_drag_x = e.button.x * g_device_pixel_ratio;
+		g_drag_y = e.button.y * g_device_pixel_ratio;
 		g_image_dragging = true;
 	} else if (e.button.button == SDL_BUTTON_RIGHT) {
 		g_marker_drag_x = g_image_x;
@@ -380,8 +381,8 @@ void handle_mouse_down_event(const SDL_Event& e) {
 }
 
 void handle_mouse_up_event(const SDL_Event& e) {
-	g_image_x = (e.button.x - g_offset_x - g_offset_dx) / g_scale;
-	g_image_y = (e.button.y + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
+	g_image_x = (e.button.x * g_device_pixel_ratio - g_offset_x - g_offset_dx) / g_scale;
+	g_image_y = (e.button.y * g_device_pixel_ratio + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
 
 	if (e.button.button == SDL_BUTTON_LEFT) {
 		g_offset_x += g_offset_dx;
@@ -453,12 +454,12 @@ void handle_mouse_move_event(const SDL_Event& e) {
 		g_marker_right_edge_ready = false;
 	}
 	if (g_image_dragging) {
-		g_offset_dx = e.motion.x - g_drag_x;
-		g_offset_dy = -(e.motion.y - g_drag_y);
+		g_offset_dx = e.motion.x * g_device_pixel_ratio - g_drag_x;
+		g_offset_dy = -(e.motion.y * g_device_pixel_ratio - g_drag_y);
 	}
 	//printf("g_offset: [%.1f, %.1f]\n", g_offset_x, g_offset_y);
-	g_image_x = (e.motion.x - g_offset_x - g_offset_dx) / g_scale;
-	g_image_y = (e.motion.y + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
+	g_image_x = (e.motion.x * g_device_pixel_ratio - g_offset_x - g_offset_dx) / g_scale;
+	g_image_y = (e.motion.y * g_device_pixel_ratio + g_offset_y + g_offset_dy - g_window_height) / g_scale + g_image_height;
 	//printf("image: [%.1f, %.1f]\n", g_image_x, g_image_y);
 
 	if (g_marker_dragging) {
@@ -871,6 +872,9 @@ int main(int, char**)
 	RenderItem wide_lines2(GL_LINES);
 
 	bool initialized = false;
+#if defined(__EMSCRIPTEN__)
+	g_device_pixel_ratio = emscripten_get_device_pixel_ratio();
+#endif
 
 	// Our state
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
