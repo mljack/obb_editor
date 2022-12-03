@@ -125,7 +125,7 @@ std::map<int, Marker> g_markers;
 std::deque<Marker> g_undo_stack;
 std::deque<Marker> g_redo_stack;
 
-std::map<int, std::string> g_vehicle_type_name{ {-1,"ROI"}, {0,"car"}, {1,"bus"}, {2,"min_bus"}, {3,"truck"}, {4,"van"}, {5,"motor"}, {6,"bike"}, {7,"ped"}, {8,"big_truck"}, {9, "dont_care"} };
+std::map<int, std::string> g_vehicle_type_name{ {-1,"ROI"}, {0,"car"}, {1,"bus"}, {2,"mini_bus"}, {3,"truck"}, {4,"van"}, {5,"motorcycle"}, {6,"cyclist"}, {7,"ped"}, {8,"big_truck"}, {9, "dont_care"} };
 
 bool g_is_modified = false;
 std::string g_filename;
