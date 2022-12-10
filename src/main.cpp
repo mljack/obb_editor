@@ -62,8 +62,10 @@ static void main_loop() { loop(); }
 
 #if defined(__EMSCRIPTEN__)
 	std::string default_background = "/resources/" BACKGROUND_IMG;
+	std::string type_def_path = "../resources/obj_types.json";
 #else
 	std::string default_background = "../resources/" BACKGROUND_IMG;
+	std::string type_def_path = "../resources/obj_types.json";
 #endif
 
 namespace {
@@ -125,7 +127,7 @@ std::map<int, Marker> g_markers;
 std::deque<Marker> g_undo_stack;
 std::deque<Marker> g_redo_stack;
 
-std::map<int, std::string> g_vehicle_type_name{ {-1,"ROI"}, {0,"car"}, {1,"bus"}, {2,"mini_bus"}, {3,"truck"}, {4,"van"}, {5,"motorcycle"}, {6,"cyclist"}, {7,"ped"}, {8,"big_truck"}, {9, "dont_care"} };
+std::map<int, std::string> g_vehicle_type_names;
 
 bool g_is_modified = false;
 std::string g_filename;
@@ -310,6 +312,33 @@ void save_markers(const std::string& filename)
 	g_is_modified = false;
 }
 
+void load_obj_types(const std::string& filename)
+{
+	std::ifstream in(filename);
+	if (!in.is_open())
+		return;
+	std::stringstream str_stream;
+	str_stream << in.rdbuf(); //read the file
+	std::string j_str = str_stream.str();
+	in.close();
+
+	nlohmann::json j;
+	try {
+		j = nlohmann::json::parse(j_str.begin(), j_str.end());
+	}
+	catch (std::exception& e) {
+		printf("Exception caught: %s\n", e.what());
+		return;
+	}
+
+	if (j.empty())
+		return;
+
+	for (auto& [key, value] : j.items())
+		g_vehicle_type_names.emplace(std::stoi(key), value);
+}
+
+
 void handle_key_down_event(const SDL_Event& e) {
 	if (e.key.keysym.sym == SDLK_UP) {
 		load_prev_file();
@@ -336,10 +365,35 @@ void handle_key_down_event(const SDL_Event& e) {
 		unapply_marker_change();
 	} else if (e.key.keysym.sym == SDLK_c) {
 		apply_marker_change();
-	} else if (e.key.keysym.sym >= SDLK_0 && e.key.keysym.sym <= SDLK_9) {
-		auto m = *g_marker;
-		m.type = int(e.key.keysym.sym - SDLK_0);
-		update_marker(m);
+	} else {
+		int type_id = -2;
+		if (e.key.keysym.sym >= SDLK_0 && e.key.keysym.sym <= SDLK_9) {
+			type_id = int(e.key.keysym.sym - SDLK_0);
+		} else if (e.key.keysym.sym == SDLK_r) {
+			type_id = -1;
+		} else if (e.key.keysym.sym == SDLK_t) {
+			type_id = 10;
+		} else if (e.key.keysym.sym == SDLK_y) {
+			type_id = 11;
+		} else if (e.key.keysym.sym == SDLK_u) {
+			type_id = 12;
+		} else if (e.key.keysym.sym == SDLK_i) {
+			type_id = 13;
+		}
+
+		if (type_id != -2 && g_marker) {
+			auto m = *g_marker;
+			m.type = type_id;
+			if (type_id == -1) {
+				int k = (int)std::round(m.heading / 90.0f);
+				if (k/2*2 != k) {
+					k++;
+					std::swap(m.length, m.width);
+				}
+				m.heading = k * 90.0f;
+			}
+			update_marker(m);
+		}
 	}
 }
 
@@ -491,7 +545,8 @@ void handle_mouse_move_event(const SDL_Event& e) {
 		g_marker_offset_dy = g_image_y - g_marker_drag_y;
 		//printf("marker dxdy: [%.1f, %.1f]\n", g_marker_offset_dx, g_marker_offset_dy);
 	} else if (g_marker_rotating) {
-		g_marker_offset_heading = (g_marker_drag_x - g_image_x) * g_scale * 0.1;
+		if (g_marker && g_marker->type != -1)
+			g_marker_offset_heading = (g_marker_drag_x - g_image_x) * g_scale * 0.1;
 	} else {
 		auto* m = find_marker_hovered(g_image_x, g_image_y);
 		if (m)
@@ -685,19 +740,18 @@ void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfl
 void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
 	std::vector<GLfloat>* v_buf2, std::vector<GLuint>* idx_buf2, std::vector<GLfloat>* v_buf3, std::vector<GLuint>* idx_buf3) {
 	for (const auto& [idx, m] : markers) {
-		auto& v_type = g_vehicle_type_name.at(m.type);
+		std::string v_type = "***";
+		if (g_vehicle_type_names.count(m.type) > 0)
+			v_type = g_vehicle_type_names.at(m.type);
 		glm::vec3 c = red;
+		glm::vec3 p(m.x, g_image_height - m.y, 0.0f);
 		if (&m == g_marker) {
 			if (!g_show_all_markers && !m.enabled)
 				continue;
 			if (g_hide_manually_created_markers && m.manually_created)
 				continue;
 			build_latest_marker_geom(v_buf, idx_buf);
-			if (m.type != 0) {
-				glm::vec3 p(m.x + g_marker_offset_dx - 5.0f, g_image_height - m.y - g_marker_offset_dy - 5.0f, 0.0f);
-				build_text(v_type, p, green2, 1.0f, v_buf2, idx_buf2);
-				build_text(v_type, p, black, 1.0f, v_buf3, idx_buf3);
-			}
+			p += glm::vec3(g_marker_offset_dx, -g_marker_offset_dy, 0.0f);
 		} else {
 			if (!g_show_all_markers && !m.enabled)
 				continue;
@@ -713,11 +767,14 @@ void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfl
 					c = cyan;
 			}
 			build_marker_geom(m, c, v_buf, idx_buf);
-			if (m.type != 0) {
-				glm::vec3 p(m.x - 5.0f, g_image_height - m.y - 5.0f, 0.0f);
-				build_text(v_type, p, green2, 1.0f, v_buf2, idx_buf2);
-				build_text(v_type, p, black, 1.0f, v_buf3, idx_buf3);
-			}
+		}
+		if (m.type != 0) {
+			if (m.type == -1)
+				p += glm::vec3(-m.length / 2, +m.width / 2, 0.0f);
+			else
+				p += glm::vec3(-5.0f, -5.0f, 0.0f);
+			build_text(v_type, p, green2, 1.0f, v_buf2, idx_buf2);
+			build_text(v_type, p, black, 1.0f, v_buf3, idx_buf3);
 		}
 	}
 }
@@ -937,6 +994,7 @@ int main(int, char**)
 			SDL_GL_GetDrawableSize(window, &g_window_width, &g_window_height);
 			printf("canvas size: [%d, %d]\n", g_window_width, g_window_height);
 			load_background(default_background);
+			load_obj_types(type_def_path);
 			rect.set_material(g_background_img_material);
 			rect.update_buffers_for_textured_geoms(vertices2, indices2);
 			lines.set_material(g_line_material);

@@ -7,8 +7,6 @@ endif()
 project(obb_editor CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_CXX_FLAGS "-Wall -Wformat")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 if(EMSCRIPTEN)
 	set(CMAKE_CXX_FLAGS_DEBUG "-g")
@@ -23,6 +21,8 @@ else()
 	if(UNIX)
 		set(CMAKE_CXX_COMPILER /usr/bin/g++-9)
 		set(CMAKE_CXX_FLAGS_DEBUG "-g")
+		set(CMAKE_CXX_FLAGS "-Wall -Wformat")
+		set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 		find_package(SDL2 REQUIRED)
 	endif()
 endif()
@@ -106,6 +106,7 @@ if(EMSCRIPTEN)
 		-sASYNCIFY
 		-sEXPORTED_RUNTIME_METHODS=[ccall,cwrap]
 		-sEXPORTED_FUNCTIONS=[_main,_new_filelist,_add_folder,_add_file,_pop_folder,_sort_filelist]
+		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/obj_types.json@/resources/obj_types.json
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/cat.jpg@/resources/cat.jpg
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/bird.jpg@/images/bird.jpg
 		--preload-file=${CMAKE_CURRENT_LIST_DIR}/resources/dog.jpg@/images/dog.jpg

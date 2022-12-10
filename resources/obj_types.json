@@ -1,0 +1,16 @@
+{
+  "-1": "ROI",
+  "0": "car",
+  "1": "bus",
+  "2": "mini_bus",
+  "3": "truck",
+  "4": "van",
+  "5": "motorcycle",
+  "6": "cyclist",
+  "7": "pedestrian",
+  "8": "big_truck",
+  "9": "dont_care",
+  "10": "small_trailer",
+  "11": "travel_trailer",
+  "12": "trailer"
+}
