@@ -54,6 +54,8 @@ add_executable(obb_editor
 	src/fs_helper.cpp
 	src/texture.cpp
 	src/ui.cpp
+	src/pv.cpp
+	src/pwx.cpp
 )
 
 if(MSVC)

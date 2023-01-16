@@ -1,93 +1,24 @@
 /* The wrong reported division by zero happens in "c_line" function */
-//#define double double long
 #define YD 1.5
 #include <stdio.h>
-#include <conio.h>
-#include <dos.h>
 #include <math.h>
 #include <stdlib.h>
 
+#include "pv.h"
+#include "pwx.h"
+
 unsigned char now_color=14;
 double _st1,_st2,_st3,e1,e2,e3,e4,e5,p,q;
-unsigned char far *screen=(unsigned char far*)0xa0000000l;
+
 int move_status=0;/* UP:0 DOWN:1 LEFT:2 RIGHT:3 */
 int equ2_status=0;
-int xy[6]={100,50,70,100,200,100};
 
-double distance(int x,int y,int x1,int y1)
-{int a,a1;
- a=(x1-x);
- a1=(y1-y);
- return sqrt(a*a+a1*a1);
-}
+void _arc(int *xy);
 
-int line_abs(int a)
-{if (a<0) return -a;
- return a;
-}
-
-void swap(int *a,int *b)
-{int c;
- c=*a;
- *a=*b;
- *b=c;
-}
-
-int sgh(long a)
-{if (a>0) return 1;
- if (a==0) return 0;
- if (a<0) return -1;
- }
-
-int pset(int x,int y,int color)
-{
-// static a=0,b=0;
-
- if (x<0||x>319||y<0||y>199)return -2;
- if (color<0||color>255)return -3;
-
-// delay(30);a=b%4;b++;
- //printf("%d,%d\n",x,y);
-
- *(screen+y*320+x)=color;
- return 0;
-}
-
-int line(int x,int y,int x1,int y1,int color)
-{register int a;
- int x2,y2,x3,y3;
- long x_step,y_step,x_step1,y_step1;
- if (color<0||color>255)return -3;
- x3=sgh(x1-x);
- y3=sgh(y1-y);
- x2=line_abs(x1-x)+1;
- y2=line_abs(y1-y)+1;
- if (x2>y2)
-    {x_step=x3;x_step1=1;
-     y_step=y2*y3;y_step1=x2;
-    }
-  else
-    {y_step=y3;y_step1=1;
-     x_step=x2*x3;x_step1=y2;
-    }
- for(a=0;a<=319;a++)
- {x2=x+a*x_step/x_step1+0.5;
-  y2=y+a*y_step/y_step1+0.5;
-  pset(x2,y2,color);
-  if (x2==x1&&y2==y1){return 0;}
- }
-}
-
-
-void close_screen_320_200_256(void)
-{struct REGS r;
- r.x.ax=0x0003;
- int86(0x10,&r,&r);
-}
-void set_mode(unsigned int mode)
-{struct REGS r;
- r.x.ax=mode;
- int86(0x10,&r,&r);
+int sgh(long a) {
+	if (a>0) return 1;
+	if (a==0) return 0;
+	if (a<0) return -1;
 }
 
 double equ3(double a1,double a2,double a3)
@@ -96,11 +27,11 @@ double equ3(double a1,double a2,double a3)
  return pow(-q/2+pq,1/3)+pow(-q/2-pq,1/3)-a1/3;
 }
 
-double equ2_z(void)
+double equ2_z()
 {return (-p+sqrt(p*p-4*q))/2;
 }
 
-double equ2_f(void)
+double equ2_f()
 {return (-p-sqrt(p*p-4*q))/2;
 }
 
@@ -127,12 +58,12 @@ double root(float x1,float x2)
 }
 
 double compute_a(int sin_sign,int cos_sign,int x,int y,double c)
-{double s=sqrt(1-c*c);
+{double s=std::sqrt(1-c*c);
  return (sin_sign*s*x+c*cos_sign*y)/pow((cos_sign*c*x-s*sin_sign*y),2);
 }
 
 int look_like(double a1,double a2)
-{if (fabs(a1-a2)>0.000001)return 0;
+{if (std::fabs(a1-a2)>0.000001)return 0;
  return 1;
 }
 
@@ -152,8 +83,9 @@ int c_line(int x0,int y0,int x1,int y1,int x2,int y2,int x3,int y3)
  return 1;
 }
 
-void arc(int *xy)
-{void _arc(void);
+static void pset(int x, int y, int c) {}
+
+void arc(int *xy) {
  double x1=xy[4]-xy[0],y1=xy[5]-xy[1],x2=xy[2]-xy[0],y2=xy[3]-xy[1];
  double d=x1*x2*(y2-y1),e=x2*x2*y1-x1*x1*y2,f=y1*y2*(y2-y1);
  double k=x1*x2*(x2-x1),m=x1*y2*y2-x2*y1*y1,n=y1*y2*(x2-x1);
@@ -231,27 +163,37 @@ void arc(int *xy)
 			 }
 */
 
- if (n1==1) {A=a[0];
-	     SIN_SIGN=sin_sign[0];
-	     COS_SIGN=cos_sign[0];
-	     printf("\a\a");
-	    }
- if (n1==0) {printf("\a");
-	     close_screen_320_200_256();
-	     for(r1=0;r1<4;r1++)printf("%g ",aa[r1]);printf("\n");
-	     for(r1=0;r1<4;r1++)printf("%g ",_aa[r1]);printf("\n");
-	     exit(0);
-	    }
- if (all_look_like(a,n1)){A=a[0];
-			    SIN_SIGN=sin_sign[0];
-			    COS_SIGN=cos_sign[0];
-			   }
-s=sqrt(1-c*c);
-s=s*SIN_SIGN;c=c*COS_SIGN;
-e1=A*c*c;e2=-2*A*c*s;e3=A*s*s;e4=-s;e5=-c;
-if (e1==0) {equ2_status=1;e1=e3;e2=e4;}
-if (e3==0) {equ2_status=2;e2=e5;}
-_arc();
+	if (n1==1) {
+		A=a[0];
+		SIN_SIGN=sin_sign[0];
+		COS_SIGN=cos_sign[0];
+		printf("\a\a");
+	}
+	if (n1==0) {
+		printf("\a");
+		//close_screen_320_200_256();
+		for(r1=0;r1<4;r1++)
+			printf("%g ",aa[r1]);
+		printf("\n");
+		for(r1=0;r1<4;r1++)
+			printf("%g ",_aa[r1]);
+		printf("\n");
+		exit(0);
+	}
+	if (all_look_like(a,n1)) {
+		A=a[0];
+		SIN_SIGN=sin_sign[0];
+		COS_SIGN=cos_sign[0];
+	}
+	s=sqrt(1-c*c);
+	s=s*SIN_SIGN;c=c*COS_SIGN;
+	e1=A*c*c;e2=-2*A*c*s;e3=A*s*s;e4=-s;e5=-c;
+	if (e1==0)
+		{equ2_status=1;e1=e3;e2=e4;}
+	if (e3==0)
+		{equ2_status=2;e2=e5;}
+	printf("%lf*x^2 + %lf*xy + %lf*y^2 + %lf*x + %lf*y = 0\n", e1, e2, e3, e4, e5);
+	_arc(xy);
 }
 
 
@@ -264,7 +206,7 @@ void compute_pq(double x3,double y3)
  }
 }
 
-double compute_dt(void)
+double compute_dt()
 {return p*p-4*q;
 }
 
@@ -288,151 +230,174 @@ void root_2(double *x1,double *y1,double *x2,double *y2)
  }
 }
 
-int equ2_un(double *x1,double *y1,double *x2,double *y2)
-	/* 1:have roots 0:haven't */
-{switch(move_status)
- {case 0:if (equ2_status==1) if ((y1-1)<0) return 0;
-				else {*x1=sqrt((--(*y1))*e2/e1);
-				      *x2=-sqrt(*y1*e2/e1);
-				      return 1;
-				      *y2--;
-				      }
-	    else {*x1=*x2=(--(*y1))*(*y1)*e1/e2;
-		  *y2--;
-		  return 1;
-		 }
-  case 1:if (equ2_status==1) if ((y1+1)<0) return 0;
-				else {*x1=sqrt((++(*y1))*e2/e1);
-				      *x2=-sqrt(*y1*e2/e1);
-				      return 1;
-				      *y2++;
-				      }
-	    else {*x1=*x2=(++(*y1))*(*y1)*e1/e2;
-		  *y2++;
-		  return 1;
-		 }
-  case 2:if (equ2_status==1) if ((x1-1)<0) return 0;
-				else {*y1=sqrt((--(*x1))*e2/e1);
-				      *y2=-sqrt(*x1*e2/e1);
-				      return 1;
-				      *x2--;
-				      }
-	    else {*y1=*y2=(--(*x1))*(*x1)*e1/e2;
-		  return 1;
-		  *x2--;
-		 }
-  case 3:if (equ2_status==1) if ((x1+1)<0) return 0;
-				else {*y1=sqrt((++(*x1))*e2/e1);
-				      *y2=-sqrt(*x1*e2/e1);
-				      return 1;
-				      *x2++;
-				      }
-	    else {*y1=*y2=(++(*x1))*(*x1)*e1/e2;
-		  *x2++;
-		  return 1;
-		 }
- }
+/* 1:have roots 0:haven't */
+int equ2_un(double *x1, double *y1, double *x2, double *y2) {
+	switch(move_status) {
+		case 0: {
+			if (equ2_status==1) {
+				if ((y1-1)<0) {
+					return 0;
+				} else {
+					*x1=sqrt((--(*y1))*e2/e1);
+					*x2=-sqrt(*y1*e2/e1);
+					return 1;
+					//*y2--;
+				}
+			} else {
+				*x1=*x2=(--(*y1))*(*y1)*e1/e2;
+				*y2--;
+				return 1;
+			}
+		}
+		case 1: {
+			if (equ2_status==1) {
+				if ((y1+1)<0) {
+					return 0;
+				} else {
+					*x1=sqrt((++(*y1))*e2/e1);
+					*x2=-sqrt(*y1*e2/e1);
+					return 1;
+					//*y2++;
+				}
+			} else {
+				*x1=*x2=(++(*y1))*(*y1)*e1/e2;
+				*y2++;
+				return 1;
+		 	}
+		}
+		case 2: {
+			if (equ2_status==1) {
+				if ((x1-1)<0) {
+					return 0;
+				} else {
+					*y1=sqrt((--(*x1))*e2/e1);
+					*y2=-sqrt(*x1*e2/e1);
+					return 1;
+					//*x2--;
+				}
+	    } else {
+				*y1=*y2=(--(*x1))*(*x1)*e1/e2;
+				return 1;
+				//*x2--;
+		 	}
+		}
+		case 3: {
+			if (equ2_status==1) {
+				if ((x1+1)<0) {
+					return 0;
+				} else {
+					*y1=sqrt((++(*x1))*e2/e1);
+					*y2=-sqrt(*x1*e2/e1);
+					return 1;
+					*x2++;
+				}
+			} else {
+				*y1=*y2=(++(*x1))*(*x1)*e1/e2;
+				*x2++;
+				return 1;
+			}
+		}
+ 	}
+ return 0 ;
 }
 
-void _arc(void)
-{int status=0;
- double x1=xy[2]-xy[0],y1=xy[3]-xy[1],x2=xy[4]-xy[0],y2=xy[5]-xy[1];
- double x3,y3,x4,y4,dt,*_x=&x1,*_y=&y1,*__x=&x2,*__y=&y2;
- double o_x3,o_x4,o_y3,o_y4;
- double tmp1,tmp2;
- x3=x4=o_x3=o_x4=x1;y3=y4=o_y3=o_y4=y1;
- loop1:
- o_x3=x3;o_y3=y3;o_x4=x3;o_y4=y3;
- if (equ2_status)
-    if (equ2_un(&x3,&y3,&x4,&y4))
-       if (look_like(x3,x4)&&look_like(y3,y4)) goto q3;
-	  else goto q4;
-       else goto q1;
- compute_pq(x3,y3);
- dt=compute_dt();
- if (dt<0)
-    {q1:
-     switch(move_status)
-     {case 0:move_status=1;goto loop1;
-      case 1:move_status=0;goto loop1;
-      case 2:move_status=3;goto loop1;
-      case 3:move_status=2;goto loop1;
-     }
-    }
- if (look_like(dt,0))
-    {root_1(&x3,&y3);
-     q3:
-     if (o_x3==0) goto next;
-     if (c_line(0,0,o_x3,o_y3,x3,y3,*__x,*__y))
-       {q2:
-       if (fabs(o_x3-x3)<YD&&fabs(o_y3-y3)<YD)
-	  {pset(x3+xy[0],y3+xy[1],now_color);
-	   goto loop1;
-	  }
-	  else {switch(move_status)
-		{case 0:
-		 case 1:move_status=2;x3=o_x3;y3=o_y3;goto loop1;
-		 case 2:
-		 case 3:move_status=0;x3=o_x3;y3=o_y3;goto loop1;
+void _arc(int *xy) {
+	int status=1;
+	 double x1=xy[2]-xy[0],y1=xy[3]-xy[1],x2=xy[4]-xy[0],y2=xy[5]-xy[1];
+	 double x3,y3,x4,y4,dt,*_x=&x1,*_y=&y1,*__x=&x2,*__y=&y2;
+	 double o_x3,o_x4,o_y3,o_y4;
+	 double tmp1,tmp2;
+	 x3=x4=o_x3=o_x4=x1;y3=y4=o_y3=o_y4=y1;
+	while (status != 0) {
+		o_x3=x3;o_y3=y3;o_x4=x3;o_y4=y3;
+		if (equ2_status)
+		  if (equ2_un(&x3,&y3,&x4,&y4))
+		     if (look_like(x3,x4)&&look_like(y3,y4)) goto q3;
+		  else goto q4;
+		     else goto q1;
+		compute_pq(x3,y3);
+		dt=compute_dt();
+		if (dt<0) {
+			q1:
+			switch(move_status) {
+				case 0:move_status=1; continue;
+				case 1:move_status=0; continue;
+				case 2:move_status=3; continue;
+				case 3:move_status=2; continue;
+			}
 		}
-	       }
-       }
-     x3=o_x3;y3=o_y3;goto q1;
-    }
- if (dt>0)
-    {root_2(&x3,&y3,&x4,&y4);
-     q4:
-     if ((int)o_x3==0) goto next;
-     tmp1=c_line(0,0,o_x3,o_y3,x3,y3,*__x,*__y);
-     if ((int)o_x4==0) goto next;
-     tmp2=c_line(0,0,o_x4,o_y4,x4,y4,*__x,*__y);
-     if (!tmp1 && tmp2)
-	{o_x3=o_x4;o_y3=o_y4;x3=x4;y3=y4;goto q2;}
-     if (tmp1 && !tmp2) goto q2;
-     if (!tmp1 && !tmp2) {x3=o_x3;y3=o_y3;goto q1;}
-     tmp1=move_status/2?fabs(o_y3-y3):fabs(o_x3-x3);
-     tmp2=move_status/2?fabs(o_y4-y4):fabs(o_x4-x4);
-     if (tmp1<YD && tmp2>=YD)
-	{pset(x3+xy[0],y3+xy[1],now_color);
-	goto loop1;
-	}
-     if (tmp1>=YD && tmp2<YD)
-	{pset(x4+xy[0],y4+xy[1],now_color);
-	 x3=x4;y3=y4;
-	 goto loop1;
-	}
-     if (tmp1<YD && tmp2<YD)
-	{if (distance(x3,y3,o_x3,o_y3)>distance(x4,y4,o_x4,o_y4))
-	    {pset(x3+xy[0],y3+xy[1],now_color);
-	     goto loop1;
-	    }
-	   else {pset(x4+xy[0],y4+xy[1],now_color);
-		 x3=x4;y3=y4;
-		 goto loop1;
+		if (look_like(dt,0)) {
+			root_1(&x3,&y3);
+			q3:
+			if (o_x3==0) goto next;
+			if (c_line(0,0,o_x3,o_y3,x3,y3,*__x,*__y)) {
+				q2:
+				if (fabs(o_x3-x3)<YD&&fabs(o_y3-y3)<YD) {
+					pset(x3+xy[0],y3+xy[1],now_color);
+					continue;
+				} else {
+					switch(move_status) {
+						case 0:
+						case 1:move_status=2;x3=o_x3;y3=o_y3; continue;
+						case 2:
+						case 3:move_status=0;x3=o_x3;y3=o_y3; continue;
+					}
+				}
+			}
+			x3=o_x3;y3=o_y3;goto q1;
 		}
+		if (dt>0) {
+			root_2(&x3,&y3,&x4,&y4);
+			q4:
+			if ((int)o_x3==0) goto next;
+			tmp1=c_line(0,0,o_x3,o_y3,x3,y3,*__x,*__y);
+			if ((int)o_x4==0) goto next;
+			tmp2=c_line(0,0,o_x4,o_y4,x4,y4,*__x,*__y);
+			if (!tmp1 && tmp2) {
+				o_x3=o_x4;o_y3=o_y4;x3=x4;y3=y4;goto q2;
+			}
+			if (tmp1 && !tmp2) goto q2;
+			if (!tmp1 && !tmp2) {x3=o_x3;y3=o_y3;goto q1;}
+			tmp1=move_status/2?fabs(o_y3-y3):fabs(o_x3-x3);
+			tmp2=move_status/2?fabs(o_y4-y4):fabs(o_x4-x4);
+			if (tmp1<YD && tmp2>=YD) {
+				pset(x3+xy[0],y3+xy[1],now_color);
+				continue;
+			}
+			if (tmp1>=YD && tmp2<YD) {
+				pset(x4+xy[0],y4+xy[1],now_color);
+			 x3=x4;y3=y4;
+			 continue;
+			}
+			if (tmp1<YD && tmp2<YD) {
+				if (distance(x3,y3,o_x3,o_y3)>distance(x4,y4,o_x4,o_y4)) {
+					pset(x3+xy[0],y3+xy[1],now_color);
+					continue;
+				} else {
+					pset(x4+xy[0],y4+xy[1],now_color);
+		 			x3=x4;y3=y4;
+		 			continue;
+				}
+			}
+		}
+		next:
+		if (status)
+			return;
+		status = 1;
+		_x=&x2;_y=&y2;__x=&x1;__y=&y1;
+		x3=x4=o_x3=o_x4=x2;y3=y4=o_y3=o_y4=y2;
 	}
-    }
- next:
- if (status) return;
- status=1;
- _x=&x2;_y=&y2;__x=&x1;__y=&y1;
- x3=x4=o_x3=o_x4=x2;y3=y4=o_y3=o_y4=y2;
- goto loop1;
 }
 
-void main(void)
-{int a;
-set_mode(0x13);
-//int xy[6]={100,50,140,50,100,90};
-//exit(0);
-arc(xy);
-for(a=0;a<6;a+=2)pset(xy[a],xy[a+1],now_color-2);
-line(xy[0],xy[1],xy[2],xy[3],now_color-2);
-line(xy[4],xy[5],xy[0],xy[1],now_color-2);
-line(xy[4],xy[5],xy[2],xy[3],now_color-2);
-//printf("%f,%d,%d,%f,%f\n",A,SIN_SIGN,COS_SIGN,s,c);
-//printf("%gx^2+%gxy+%gy^2+%gx+%gy=0\n",A*c*c,-2*A*s*c*SIN_SIGN*COS_SIGN,A*s*s,-s*SIN_SIGN,-c*COS_SIGN);
-//printf("%f",A*c*c*x*x-2*A*s*c*SIN_SIGN*COS_SIGN*x*y+A*s*s*y*y-s*SIN_SIGN*x-c*COS_SIGN*y);
-getch();
-close_screen_320_200_256();
+void pwx_test() {
+	//int xy[6]={100,50,140,50,100,90};
+	int xy[6]={100,50,70,100,200,100};
+	arc(xy);
+	// for(int a=0;a<6;a+=2)pset(xy[a],xy[a+1],now_color-2);
+	// line(xy[0],xy[1],xy[2],xy[3],now_color-2);
+	// line(xy[4],xy[5],xy[0],xy[1],now_color-2);
+	// line(xy[4],xy[5],xy[2],xy[3],now_color-2);
+	//printf("%f,%d,%d,%f,%f\n",A,SIN_SIGN,COS_SIGN,s,c);
+	//printf("%gx^2+%gxy+%gy^2+%gx+%gy=0\n",A*c*c,-2*A*s*c*SIN_SIGN*COS_SIGN,A*s*s,-s*SIN_SIGN,-c*COS_SIGN);
+	//printf("%f",A*c*c*x*x-2*A*s*c*SIN_SIGN*COS_SIGN*x*y+A*s*s*y*y-s*SIN_SIGN*x-c*COS_SIGN*y);
 }

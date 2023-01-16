@@ -739,8 +739,12 @@ void load_background(const std::string& file_path) {
 	load_markers(marker_path);
 }
 
-int main(int, char**)
-{
+#include "pwx.h"
+
+int main(int, char**) {
+	pwx_test();
+	exit(0);
+
 	// Setup SDL
 	// (Some versions of SDL before <2.0.10 appears to have performance/stalling issues on a minority of Windows systems,
 	// depending on whether SDL_INIT_GAMECONTROLLER is enabled or disabled.. updating to the latest version of SDL is recommended!)
