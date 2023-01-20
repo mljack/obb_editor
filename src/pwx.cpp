@@ -85,19 +85,19 @@ int c_line(int x0,int y0,int x1,int y1,int x2,int y2,int x3,int y3)
 
 static void pset(int x, int y, int c) {}
 
-void arc(int *xy) {
- double x1=xy[4]-xy[0],y1=xy[5]-xy[1],x2=xy[2]-xy[0],y2=xy[3]-xy[1];
- double d=x1*x2*(y2-y1),e=x2*x2*y1-x1*x1*y2,f=y1*y2*(y2-y1);
- double k=x1*x2*(x2-x1),m=x1*y2*y2-x2*y1*y1,n=y1*y2*(x2-x1);
- double j1=2*d+e-f,j2=k-m-2*n,j3=2*d-f;
- double st__=j1*j1+j2*j2;
- double st1=((2*m-j2)*j2-2*j1*j3)/st__;
- double st2=(j3*j3+m*((-2)*j2+m))/st__;
- double st3=-(m*m)/st__;
- double t;
+void arc(const std::vector<double>& xy, double* AA, double* theta) {
+	double x1=xy[4]-xy[0],y1=xy[5]-xy[1],x2=xy[2]-xy[0],y2=xy[3]-xy[1];
+	double d=x1*x2*(y2-y1),e=x2*x2*y1-x1*x1*y2,f=y1*y2*(y2-y1);
+	double k=x1*x2*(x2-x1),m=x1*y2*y2-x2*y1*y1,n=y1*y2*(x2-x1);
+	double j1=2*d+e-f,j2=k-m-2*n,j3=2*d-f;
+	double st__=j1*j1+j2*j2;
+	double st1=((2*m-j2)*j2-2*j1*j3)/st__;
+	double st2=(j3*j3+m*((-2)*j2+m))/st__;
+	double st3=-(m*m)/st__;
+	double t;
 
- double aa[4],aa_[4],*_aa=aa,*__x=&x1,*__y=&y1;
- int r1,r2;
+	double aa[4],aa_[4],*_aa=aa,*__x=&x1,*__y=&y1;
+	int r1,r2;
 
 // double a1,a1_,a2,a2_,a3,a3_,a4,a4_;
  double a[4];
@@ -188,12 +188,19 @@ void arc(int *xy) {
 	s=sqrt(1-c*c);
 	s=s*SIN_SIGN;c=c*COS_SIGN;
 	e1=A*c*c;e2=-2*A*c*s;e3=A*s*s;e4=-s;e5=-c;
+	// A*(x*cos-y*sin)^2 = x*sin+y*cos
+	// (X, Y) = [cos, -sin] * [x]
+	//          [sin,  cos]   [y]
+	// A*x^2 = Y
 	if (e1==0)
 		{equ2_status=1;e1=e3;e2=e4;}
 	if (e3==0)
 		{equ2_status=2;e2=e5;}
 	printf("%lf*x^2 + %lf*xy + %lf*y^2 + %lf*x + %lf*y = 0\n", e1, e2, e3, e4, e5);
-	_arc(xy);
+	
+	*AA = A;
+	*theta = std::atan2(c, s);
+	//_arc(xy);
 }
 
 
@@ -389,15 +396,15 @@ void _arc(int *xy) {
 	}
 }
 
-void pwx_test() {
-	//int xy[6]={100,50,140,50,100,90};
-	int xy[6]={100,50,70,100,200,100};
-	arc(xy);
-	// for(int a=0;a<6;a+=2)pset(xy[a],xy[a+1],now_color-2);
-	// line(xy[0],xy[1],xy[2],xy[3],now_color-2);
-	// line(xy[4],xy[5],xy[0],xy[1],now_color-2);
-	// line(xy[4],xy[5],xy[2],xy[3],now_color-2);
-	//printf("%f,%d,%d,%f,%f\n",A,SIN_SIGN,COS_SIGN,s,c);
-	//printf("%gx^2+%gxy+%gy^2+%gx+%gy=0\n",A*c*c,-2*A*s*c*SIN_SIGN*COS_SIGN,A*s*s,-s*SIN_SIGN,-c*COS_SIGN);
-	//printf("%f",A*c*c*x*x-2*A*s*c*SIN_SIGN*COS_SIGN*x*y+A*s*s*y*y-s*SIN_SIGN*x-c*COS_SIGN*y);
-}
+// void pwx_test() {
+// 	//int xy[6]={100,50,140,50,100,90};
+// 	int xy[6]={100,50,70,100,200,100};
+// 	arc(xy);
+// 	// for(int a=0;a<6;a+=2)pset(xy[a],xy[a+1],now_color-2);
+// 	// line(xy[0],xy[1],xy[2],xy[3],now_color-2);
+// 	// line(xy[4],xy[5],xy[0],xy[1],now_color-2);
+// 	// line(xy[4],xy[5],xy[2],xy[3],now_color-2);
+// 	//printf("%f,%d,%d,%f,%f\n",A,SIN_SIGN,COS_SIGN,s,c);
+// 	//printf("%gx^2+%gxy+%gy^2+%gx+%gy=0\n",A*c*c,-2*A*s*c*SIN_SIGN*COS_SIGN,A*s*s,-s*SIN_SIGN,-c*COS_SIGN);
+// 	//printf("%f",A*c*c*x*x-2*A*s*c*SIN_SIGN*COS_SIGN*x*y+A*s*s*y*y-s*SIN_SIGN*x-c*COS_SIGN*y);
+// }

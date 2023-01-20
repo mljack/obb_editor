@@ -1,3 +1,5 @@
 #pragma once
 
-void pwx_test();
+#include <vector>
+
+void arc(const std::vector<double>& xy, double* AA, double* theta);

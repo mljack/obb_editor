@@ -130,6 +130,8 @@ std::map<int, std::string> g_vehicle_type_name{ {-1,"ROI"}, {0,"car"}, {1,"bus"}
 bool g_is_modified = false;
 std::string g_filename;
 
+bool g_parabola_test = true;
+
 Marker* g_marker = nullptr;
 
 Marker* find_marker_hovered(float x, float y) {
@@ -365,6 +367,8 @@ void handle_mouse_down_event(const SDL_Event& e) {
 		g_marker_drag_y = g_image_y;
 		SDL_Keymod mod = SDL_GetModState();
 		if (mod & KMOD_LCTRL) {
+			if (g_parabola_test && g_markers.size() >= 3)
+				return;
 			auto m = create_marker(g_image_x, g_image_y);
 			update_marker(m);
 			g_marker = &g_markers.at(m.id);
@@ -374,6 +378,10 @@ void handle_mouse_down_event(const SDL_Event& e) {
 			g_marker_rotating = true;
 		} else if (g_marker) {
 			g_marker_right_clicked = true;
+		} else if (mod & KMOD_LALT) {
+			// if (g_curve_pts.size() >= 10)
+			// 	g_curve_pts.clear();
+			// g_curve_pts.emplace_back(g_image_x, g_image_y);
 		}
 		//printf("marker: [%.1f, %.1f, %.1f, %.1f, %.1f]\n", g_marker->x, g_marker->y, g_marker->length, g_marker->width, g_marker->heading);
 	}
@@ -418,6 +426,8 @@ void handle_mouse_up_event(const SDL_Event& e) {
 	} else if (e.button.button == SDL_BUTTON_RIGHT && g_marker) {
 		auto m = *g_marker;
 		if (g_marker_right_clicked) {
+			if (g_parabola_test)
+				return;
 			g_marker_right_clicked = false;
 			glm::vec2 c(m.x, m.y);
 			glm::vec2 v(g_image_x, g_image_y);
@@ -608,6 +618,20 @@ void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* 
 			v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f); v_buf->push_back(1.0f);
 		}
 	}
+
+	// center cross
+	idx_buf->push_back(base_idx + 12); idx_buf->push_back(base_idx + 13);
+	idx_buf->push_back(base_idx + 14); idx_buf->push_back(base_idx + 15);
+
+	// center diamond
+	idx_buf->push_back(base_idx + 16); idx_buf->push_back(base_idx + 17);
+	idx_buf->push_back(base_idx + 17); idx_buf->push_back(base_idx + 18);
+	idx_buf->push_back(base_idx + 18); idx_buf->push_back(base_idx + 19);
+	idx_buf->push_back(base_idx + 19); idx_buf->push_back(base_idx + 16);
+
+	if (g_parabola_test)
+		return;
+
 	// box
 	idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
 	idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
@@ -618,14 +642,6 @@ void build_latest_marker_geom(std::vector<GLfloat>* v_buf, std::vector<GLuint>* 
 	idx_buf->push_back(base_idx + 8); idx_buf->push_back(base_idx + 9);
 	idx_buf->push_back(base_idx + 9); idx_buf->push_back(base_idx + 10);
 	idx_buf->push_back(base_idx + 9); idx_buf->push_back(base_idx + 11);
-
-	// center
-	idx_buf->push_back(base_idx + 12); idx_buf->push_back(base_idx + 13);
-	idx_buf->push_back(base_idx + 14); idx_buf->push_back(base_idx + 15);
-	idx_buf->push_back(base_idx + 16); idx_buf->push_back(base_idx + 17);
-	idx_buf->push_back(base_idx + 17); idx_buf->push_back(base_idx + 18);
-	idx_buf->push_back(base_idx + 18); idx_buf->push_back(base_idx + 19);
-	idx_buf->push_back(base_idx + 19); idx_buf->push_back(base_idx + 16);
 }
 
 void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
@@ -662,6 +678,20 @@ void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfl
 		v_buf->push_back(10.0f);
 		v_buf->push_back(color.x); v_buf->push_back(color.y); v_buf->push_back(color.z); v_buf->push_back(1.0f);
 	}
+
+	// center cross
+	idx_buf->push_back(base_idx + 8); idx_buf->push_back(base_idx + 9);
+	idx_buf->push_back(base_idx + 10); idx_buf->push_back(base_idx + 11);
+
+	if (g_parabola_test)
+		return;
+
+	// center diamond
+	idx_buf->push_back(base_idx + 12); idx_buf->push_back(base_idx + 13);
+	idx_buf->push_back(base_idx + 13); idx_buf->push_back(base_idx + 14);
+	idx_buf->push_back(base_idx + 14); idx_buf->push_back(base_idx + 15);
+	idx_buf->push_back(base_idx + 15); idx_buf->push_back(base_idx + 12);
+
 	// box
 	idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
 	idx_buf->push_back(base_idx + 1); idx_buf->push_back(base_idx + 2);
@@ -672,14 +702,6 @@ void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfl
 	idx_buf->push_back(base_idx + 4); idx_buf->push_back(base_idx + 5);
 	idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 6);
 	idx_buf->push_back(base_idx + 5); idx_buf->push_back(base_idx + 7);
-
-	// center
-	idx_buf->push_back(base_idx + 8); idx_buf->push_back(base_idx + 9);
-	idx_buf->push_back(base_idx + 10); idx_buf->push_back(base_idx + 11);
-	idx_buf->push_back(base_idx + 12); idx_buf->push_back(base_idx + 13);
-	idx_buf->push_back(base_idx + 13); idx_buf->push_back(base_idx + 14);
-	idx_buf->push_back(base_idx + 14); idx_buf->push_back(base_idx + 15);
-	idx_buf->push_back(base_idx + 15); idx_buf->push_back(base_idx + 12);
 }
 
 void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
@@ -722,6 +744,66 @@ void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfl
 	}
 }
 
+#include "pwx.h"
+
+void build_curve_buffer(const std::map<int, Marker>& markers, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
+	std::vector<double> xy;
+	for (const auto& [idx, m] : markers) {
+		xy.push_back(m.x);
+		xy.push_back(m.y);
+	}
+
+	int num_of_steps = 31;
+	double A, theta;
+	arc(xy, &A, &theta);
+
+	glm::dvec2 p1(xy[0], xy[1]);
+	glm::dvec2 p2(xy[2], xy[3]);
+	glm::dvec2 base(xy[4], xy[5]);
+
+	glm::dvec2 x_dir(std::cos(theta), std::sin(theta));
+	glm::dvec2 y_dir(-std::sin(theta), std::cos(theta));
+	glm::dvec2 pp1(dot(p1-base, x_dir), dot(p1-base, y_dir));
+	glm::dvec2 pp2(dot(p2-base, x_dir), dot(p2-base, y_dir));
+
+	GLuint base_idx = (GLuint)v_buf->size() / 7;
+	v_buf->push_back(base.x);
+	v_buf->push_back(g_image_height - base.y);
+	v_buf->push_back(10.0f);
+	v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
+	glm::dvec2 axis = base + 100.0 * y_dir;
+	v_buf->push_back(axis.x);
+	v_buf->push_back(g_image_height - axis.y);
+	v_buf->push_back(10.0f);
+	v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
+	idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
+
+	base_idx = (GLuint)v_buf->size() / 7;
+	for (int i = 0; i < num_of_steps; ++i) {
+		double dx = i * pp1.x / num_of_steps;
+		glm::dvec2 p = base + dx * x_dir + A * dx * dx * y_dir;
+		v_buf->push_back(p.x);
+		v_buf->push_back(g_image_height - p.y);
+		v_buf->push_back(10.0f);
+		v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
+		if (i != 0) {
+			idx_buf->push_back(base_idx + i - 1); idx_buf->push_back(base_idx + i);
+		}
+	}
+	base_idx = (GLuint)v_buf->size() / 7;
+	for (int i = 0; i < num_of_steps; ++i) {
+		double dx = i * pp2.x / num_of_steps;
+		glm::dvec2 p = base + dx * x_dir + A * dx * dx * y_dir;
+		v_buf->push_back(p.x);
+		v_buf->push_back(g_image_height - p.y);
+		v_buf->push_back(10.0f);
+		v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
+		if (i != 0) {
+			idx_buf->push_back(base_idx + i - 1); idx_buf->push_back(base_idx + i);
+		}
+	}
+}
+
 void load_background(const std::string& file_path) {
 	if (g_background_texture_id != ~0U)
 		delete_texture(g_background_texture_id);
@@ -739,11 +821,9 @@ void load_background(const std::string& file_path) {
 	load_markers(marker_path);
 }
 
-#include "pwx.h"
-
 int main(int, char**) {
-	pwx_test();
-	exit(0);
+	//pwx_test();
+	//exit(0);
 
 	// Setup SDL
 	// (Some versions of SDL before <2.0.10 appears to have performance/stalling issues on a minority of Windows systems,
@@ -978,6 +1058,8 @@ int main(int, char**) {
 			std::vector<GLfloat> line_buf, wide_line_buf, wide_line_buf2;
 			std::vector<GLuint> line_idx, wide_line_idx, wide_line_idx2;
 			build_markers_buffer(g_markers, &line_buf, &line_idx, &wide_line_buf, &wide_line_idx, &wide_line_buf2, &wide_line_idx2);
+			if (g_markers.size() >= 3)
+				build_curve_buffer(g_markers, &wide_line_buf, &wide_line_idx);
 			lines.update_buffers_for_nontextured_geoms(line_buf, line_idx);
 			wide_lines.update_buffers_for_nontextured_geoms(wide_line_buf, wide_line_idx);
 			wide_lines2.update_buffers_for_nontextured_geoms(wide_line_buf2, wide_line_idx2);

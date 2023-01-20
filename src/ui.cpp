@@ -20,6 +20,8 @@ namespace {
 	std::vector<std::shared_ptr<Entry>> g_path_stack;
 }
 
+extern bool g_parabola_test;
+
 void load_background(const std::string& file_path);
 void recursive_sort_file_tree(std::shared_ptr<Entry> base);
 
@@ -204,6 +206,8 @@ void show_file_list() {
 
 	ImGui::PushItemWidth(-180.0f);
 	ImGui::Checkbox("Use Metric Thresholds:", &g_use_metric_threshold);
+	ImGui::SameLine();
+	ImGui::Checkbox("P_parabola test", &g_parabola_test);
 	ImGui::SliderFloat("Low Score Threshold", &g_low_score_threshold, 0.0f, 1.0f);
 	ImGui::SliderFloat("High Score Threshold", &g_high_score_threshold, 0.0f, 1.0f);
 	ImGui::SliderFloat("Low Certainty Threshold", &g_low_certainty_threshold, 0.0f, 1.0f);
@@ -211,8 +215,6 @@ void show_file_list() {
 	ImGui::PopItemWidth();
 
 	ImGui::Checkbox("Show ALL Markers", &g_show_all_markers);
-	ImGui::SameLine();
-	ImGui::Checkbox("Hide Manual Markers", &g_hide_manually_created_markers);
 
 #if defined(__EMSCRIPTEN__)
 	if (ImGui::Button("Open Folder..."))
