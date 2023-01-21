@@ -3,9 +3,17 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <glm/vec2.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
 
 #include "pv.h"
 #include "pwx.h"
+
+namespace {
+	double pi2 = glm::two_pi<double>();
+	double pi0_5 = glm::half_pi<double>();
+}
 
 unsigned char now_color=14;
 double _st1,_st2,_st3,e1,e2,e3,e4,e5,p,q;
@@ -86,6 +94,63 @@ int c_line(int x0,int y0,int x1,int y1,int x2,int y2,int x3,int y3)
 static void pset(int x, int y, int c) {}
 
 void arc(const std::vector<double>& xy, double* AA, double* theta) {
+	// A*x^2 = Y
+	//
+	// A*(x*cos-y*sin)^2 = x*sin+y*cos
+	// (X, Y) = [cos, -sin] * [x]
+	//          [sin,  cos]   [y]
+	// A*x1*x1*c^2 - 2*A*x1*y1*c*s + A*y1*y1*s^2 = x1*s + y1*c
+	// A*x2*x2*c^2 - 2*A*x2*y2*c*s + A*y2*y2*s^2 = x2*s + y2*c
+	//
+	// A = (x1*s + y1*c) / (x1*x1*c^2 - 2*x1*y1*c*s + y1*y1*s^2)
+	// A = (x2*s + y2*c) / (x2*x2*c^2 - 2*x2*y2*c*s + y2*y2*s^2)
+	//
+	// (x1*s + y1*c) * (x2*x2*c^2 - 2*x2*y2*c*s + y2*y2*s^2) = (x2*s + y2*c) * (x1*x1*c^2 - 2*x1*y1*c*s + y1*y1*s^2)
+	// 
+	// (x1*s + y1*c) * ((x2*x2*-y2*y2)*c^2 - 2*x2*y2*c*s + y2*y2) = (x2*s + y2*c) * ((x1*x1-y1*y1)*c^2 - 2*x1*y1*c*s + y1*y1)
+	//
+	// c^3                 c^2                c         c^2*s                         s
+	// (x2*x2-y2*y2)*y1,  (x2*x2-y2*y2)*x1, y1*y2*y2, (x2*x2*-y2*y2)*x1-2*y1*x2*y2, x1*y2*y2
+	// (x1*x1-y1*y1)*y2,  (x1*x1-y1*y1)*x2, y2*y1*y1, (x1*x1*-y1*y1)*x2-2*y2*x1*y1, x2*y1*y1
+	//
+	// c^3                 c^2                c         c^2*s                         s
+	// x2*x2*y1-y2*y2*y1,  x2*x2*x1-y2*y2*x1, y1*y2*y2, x2*x2*x1-y2*y2*x1-2*y1*x2*y2, x1*y2*y2
+	// x1*x1*y1-y1*y1*y2,  x1*x1*x2-y1*y1*x2, y2*y1*y1, x1*x1*x2-y1*y1*x2-2*y2*x1*y1, x2*y1*y1
+	//
+	// f = y1*y2*y2 - y2*y1*y1 = y1*y2*(y2-y1)
+	// m = x1*y2*y2 - x2*y1*y1
+	// c^3                 c^2                c         c^2*s                         s
+	// (x2*x2*-y2*y2)*y1,  (x2*x2*-y2*y2)*x1, f,        (x2*x2*-y2*y2)*x1-2*y1*x2*y2, m
+	// (x1*x1*-y1*y1)*y2,  (x1*x1*-y1*y1)*x2, ,         (x1*x1*-y1*y1)*x2-2*y2*x1*y1,
+	//
+	// c^3                 c^2                c         c^2*s                         s
+	// x2*x2*y1-x1*x1*y1,  x2*x2*x1-x1*x1*x2, f,        x2*x2*x1-y2*y2*x1-2*y1*x2*y2, x1*y2*y2
+	// y2*y2*y1-y1*y1*y2,  y2*y2*x1-y1*y1*x2, ,         x1*x1*x2-y1*y1*x2-2*y2*x1*y1, x2*y1*y1
+	//
+	// e = x2*x2*y1-x1*x1*y2
+	// m = x1*y2*y2-x2*y1*y1
+	// k = x1*x2*(x2-x1)
+	// c^3                 c^2                c         c^2*s                         s
+	// e,                  k,                 f,        x2*x2*x1-y2*y2*x1-2*y1*x2*y2, m
+	// f,                  m,                 ,         x1*x1*x2-y1*y1*x2-2*y2*x1*y1, 
+	//
+	// c^3                 c^2                c         c^2*s                                    s
+	// e,                  k,                 f,        x2*x2*x1-x1*x1*x2,                       m
+	// f,                  m,                 ,         y2*y2*x1+2*y1*x2*y2-y1*y1*x2-2*y2*x1*y1, 
+	//
+	// c^3                 c^2                c         c^2*s                                    s
+	// e,                  k,                 f,        k,                                       m
+	// f,                  m,                 ,         y2*y2*x1-y1*y1*x2+2*y1*x2*y2-2*y2*x1*y1, 
+	//
+	// c^3                 c^2                c         c^2*s                                    s
+	// e,                  k,                 f,        k,                                       m
+	// f,                  m,                 ,         m+2*n,                                   
+	//
+
+	// c^3                 c^2                c         c^2*s                       s^2  s
+	// (x2*x2-y2*y2)*y1,  (x2*x2-y2*y2)*x1, y1*y2*y2, (x2*x2*-y2*y2)*x1-2*y1*x2*y2, x1*y2*y2
+	// (x1*x1-y1*y1)*y2,  (x1*x1-y1*y1)*x2, y2*y1*y1, (x1*x1*-y1*y1)*x2-2*y2*x1*y1, x2*y1*y1
+
 	double x1=xy[4]-xy[0],y1=xy[5]-xy[1],x2=xy[2]-xy[0],y2=xy[3]-xy[1];
 	double d=x1*x2*(y2-y1),e=x2*x2*y1-x1*x1*y2,f=y1*y2*(y2-y1);
 	double k=x1*x2*(x2-x1),m=x1*y2*y2-x2*y1*y1,n=y1*y2*(x2-x1);
@@ -102,10 +167,11 @@ void arc(const std::vector<double>& xy, double* AA, double* theta) {
 // double a1,a1_,a2,a2_,a3,a3_,a4,a4_;
  double a[4];
  int sin_sign[4],cos_sign[4],n1=0;
- _st1=st1;_st2=st2;_st3=st3;
  double A,c,s;
  int SIN_SIGN,COS_SIGN;
- c=sqrt(t=root(0,1));
+ _st1=st1;_st2=st2;_st3=st3;
+ t=root(0, 1);
+ c=sqrt(t);
 /* a1=a4*x1+c*y1/pow(c*x1-a4*y1,2);
  a1_=a4*x2+c*y2/pow(c*x2-a4*y2,2);
  a2=a4*x1+c*y1/pow(c*x1-a4*y1,2);
@@ -188,15 +254,13 @@ void arc(const std::vector<double>& xy, double* AA, double* theta) {
 	s=sqrt(1-c*c);
 	s=s*SIN_SIGN;c=c*COS_SIGN;
 	e1=A*c*c;e2=-2*A*c*s;e3=A*s*s;e4=-s;e5=-c;
-	// A*(x*cos-y*sin)^2 = x*sin+y*cos
-	// (X, Y) = [cos, -sin] * [x]
-	//          [sin,  cos]   [y]
-	// A*x^2 = Y
 	if (e1==0)
 		{equ2_status=1;e1=e3;e2=e4;}
 	if (e3==0)
 		{equ2_status=2;e2=e5;}
-	printf("%lf*x^2 + %lf*xy + %lf*y^2 + %lf*x + %lf*y = 0\n", e1, e2, e3, e4, e5);
+	double f1 = A*(x1*c-y1*s)*(x1*c-y1*s) - x1*s+y1*c;
+	double f2 = A*(x2*c-y2*s)*(x2*c-y2*s) - x2*s+y2*c;
+	printf("%lf*x^2 + %lf*xy + %lf*y^2 + %lf*x + %lf*y = 0, f(x1,y1)=%lf, f(x2,y2)=%lf\n", e1, e2, e3, e4, e5, f1, f2);
 	
 	*AA = A;
 	*theta = std::atan2(c, s);
@@ -394,6 +458,108 @@ void _arc(int *xy) {
 		_x=&x2;_y=&y2;__x=&x1;__y=&y1;
 		x3=x4=o_x3=o_x4=x2;y3=y4=o_y3=o_y4=y2;
 	}
+}
+
+	// A*x^2 = Y
+	//
+	// A*(x*cos-y*sin)^2 = x*sin+y*cos
+	// [X] = [cos, -sin] * [x]           90 [0, -1]*[1]=[0]
+	// [Y]   [sin,  cos]   [y]              [1,  0] [0] [1]
+
+double compute_trial_a(double x, double y, double theta) {
+	double xx = x*std::cos(theta)+y*std::sin(theta);
+	double yy = -x*std::sin(theta)+y*std::cos(theta); 
+	return yy/(xx*xx);
+
+	// glm::vec2 x_dir(std::cos(theta), std::sin(theta));
+	// glm::vec2 y_dir(-std::sin(theta), std::cos(theta));
+	// glm::vec2 p(x, y);
+
+	// double xx = glm::dot(x_dir, p); // x*c + y*s
+	// double yy = glm::dot(y_dir, p); // -x*s + y*c
+	// if (std::abs(xx) < 1e-6)
+	// 	return 0.0;
+	// return yy/(xx*xx);
+}
+
+double f2(double x, double y, double A, double theta) {
+	double xx = x*std::cos(theta)+y*std::sin(theta);
+	double yy = -x*std::sin(theta)+y*std::cos(theta);
+	return A*xx*xx - yy;
+}
+
+void arc2(const std::vector<double>& xy, double* A, double* theta) {
+	double x1 = xy[0]-xy[4];
+	double y1 = xy[1]-xy[5];
+	double x2 = xy[2]-xy[4];
+	double y2 = xy[3]-xy[5];
+
+	double t_low1 = std::atan2(y1, x1) - pi0_5;
+	double t_high1 = std::atan2(y2, x2) - pi0_5;
+	double t_low2 = t_low1 + pi2;
+	double t_high2 = t_high1 + pi2;
+	double delta11 = std::fabs(t_high1 - t_low1);
+	double delta12 = std::fabs(t_high1 - t_low2);
+	double delta21 = std::fabs(t_high2 - t_low1);
+	double delta22 = std::fabs(t_high2 - t_low2);
+	double t_low, t_high, t_low_old, t_high_old;
+	if (delta11 <= delta12 && delta11 <= delta21 && delta11 <= delta22) {
+		t_low = t_low1;
+		t_high = t_high1;
+	} else if (delta12 <= delta11 && delta12 <= delta21 && delta12 <= delta22) {
+		t_low = t_low2;
+		t_high = t_high1;
+	} else if (delta21 <= delta11 && delta21 <= delta12 && delta21 <= delta22) {
+		t_low = t_low1;
+		t_high = t_high2;
+	} else {
+		t_low = t_low2;
+		t_high = t_high2;
+	}
+
+	if (t_high < t_low)
+		std::swap(t_low, t_high);
+	
+	t_low_old = t_low;
+	t_high_old = t_high;
+
+	double t = (t_low + t_high) / 2;
+
+	// printf("v1: [%lf, %lf]\n", x1, y1);
+	// printf("v2: [%lf, %lf]\n", x2, y2);
+	// printf("t range[%lf, %lf]\n", glm::degrees(t_low), glm::degrees(t_high));
+
+	double residual, a;
+
+	a = compute_trial_a(x1, y1, t_low);
+	double high_residual = f2(x2, y2, a, t_low);
+	a = compute_trial_a(x1, y1, t_high);
+	double low_residual = f2(x2, y2, a, t_high);
+
+	// printf("residual: %lf, t: %lf\n", high_residual, glm::degrees(t_low));
+	// printf("residual: %lf, t: %lf\n", low_residual, glm::degrees(t_high));
+
+	for (int count = 0; count < 30; ++count) {
+		t = (t_low + t_high) / 2;
+		a = compute_trial_a(x1, y1, t);
+		residual = f2(x2, y2, a, t);
+		if (std::abs(residual) < 1e-6)
+			break;
+		// printf("residual: %lf, t: %lf, range[%lf, %lf]\n", residual, glm::degrees(t), glm::degrees(t_low), glm::degrees(t_high));
+		if (residual * high_residual <= 0.0)
+			t_high = t;
+		else
+			t_low = t;
+	} 
+	// printf("final residual:  %lf\n", residual);
+	// residual = f2(x1, y1, a, t);
+	// printf("final residual2: %lf\n", residual);
+	// printf("t range[%lf, %lf]\n", glm::degrees(t_low_old), glm::degrees(t_high_old));
+	// printf("t delta[%lf]\n", glm::degrees(t_high_old) - glm::degrees(t_low_old));
+	*A = a;
+	*theta = t;
+	if (std::abs(residual) >= 1e-6)
+		printf("max iteration reached.\n");
 }
 
 // void pwx_test() {

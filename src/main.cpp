@@ -499,6 +499,14 @@ void handle_mouse_move_event(const SDL_Event& e) {
 	if (g_marker_dragging) {
 		g_marker_offset_dx = g_image_x - g_marker_drag_x;
 		g_marker_offset_dy = g_image_y - g_marker_drag_y;
+		if (g_parabola_test) {
+			g_marker->x += g_marker_offset_dx;
+			g_marker->y += g_marker_offset_dy;
+			g_marker_offset_dx = 0.0;
+			g_marker_offset_dy = 0.0;
+			g_marker_drag_x = g_image_x;
+			g_marker_drag_y = g_image_y;
+		}
 		//printf("marker dxdy: [%.1f, %.1f]\n", g_marker_offset_dx, g_marker_offset_dy);
 	} else if (g_marker_rotating) {
 		g_marker_offset_heading = (g_marker_drag_x - g_image_x) * g_scale * 0.1;
@@ -755,7 +763,7 @@ void build_curve_buffer(const std::map<int, Marker>& markers, std::vector<GLfloa
 
 	int num_of_steps = 31;
 	double A, theta;
-	arc(xy, &A, &theta);
+	arc2(xy, &A, &theta);
 
 	glm::dvec2 p1(xy[0], xy[1]);
 	glm::dvec2 p2(xy[2], xy[3]);
@@ -779,7 +787,7 @@ void build_curve_buffer(const std::map<int, Marker>& markers, std::vector<GLfloa
 	idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
 
 	base_idx = (GLuint)v_buf->size() / 7;
-	for (int i = 0; i < num_of_steps; ++i) {
+	for (int i = 0; i <= num_of_steps; ++i) {
 		double dx = i * pp1.x / num_of_steps;
 		glm::dvec2 p = base + dx * x_dir + A * dx * dx * y_dir;
 		v_buf->push_back(p.x);
@@ -791,7 +799,7 @@ void build_curve_buffer(const std::map<int, Marker>& markers, std::vector<GLfloa
 		}
 	}
 	base_idx = (GLuint)v_buf->size() / 7;
-	for (int i = 0; i < num_of_steps; ++i) {
+	for (int i = 0; i <= num_of_steps; ++i) {
 		double dx = i * pp2.x / num_of_steps;
 		glm::dvec2 p = base + dx * x_dir + A * dx * dx * y_dir;
 		v_buf->push_back(p.x);
