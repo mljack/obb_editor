@@ -99,57 +99,60 @@ void arc(const std::vector<double>& xy, double* AA, double* theta) {
 	// A*(x*cos-y*sin)^2 = x*sin+y*cos
 	// (X, Y) = [cos, -sin] * [x]
 	//          [sin,  cos]   [y]
-	// A*x1*x1*c^2 - 2*A*x1*y1*c*s + A*y1*y1*s^2 = x1*s + y1*c
-	// A*x2*x2*c^2 - 2*A*x2*y2*c*s + A*y2*y2*s^2 = x2*s + y2*c
-	//
-	// A = (x1*s + y1*c) / (x1*x1*c^2 - 2*x1*y1*c*s + y1*y1*s^2)
-	// A = (x2*s + y2*c) / (x2*x2*c^2 - 2*x2*y2*c*s + y2*y2*s^2)
-	//
-	// (x1*s + y1*c) * (x2*x2*c^2 - 2*x2*y2*c*s + y2*y2*s^2) = (x2*s + y2*c) * (x1*x1*c^2 - 2*x1*y1*c*s + y1*y1*s^2)
-	// 
-	// (x1*s + y1*c) * ((x2*x2*-y2*y2)*c^2 - 2*x2*y2*c*s + y2*y2) = (x2*s + y2*c) * ((x1*x1-y1*y1)*c^2 - 2*x1*y1*c*s + y1*y1)
-	//
-	// c^3                 c^2                c         c^2*s                         s
-	// (x2*x2-y2*y2)*y1,  (x2*x2-y2*y2)*x1, y1*y2*y2, (x2*x2*-y2*y2)*x1-2*y1*x2*y2, x1*y2*y2
-	// (x1*x1-y1*y1)*y2,  (x1*x1-y1*y1)*x2, y2*y1*y1, (x1*x1*-y1*y1)*x2-2*y2*x1*y1, x2*y1*y1
-	//
-	// c^3                 c^2                c         c^2*s                         s
-	// x2*x2*y1-y2*y2*y1,  x2*x2*x1-y2*y2*x1, y1*y2*y2, x2*x2*x1-y2*y2*x1-2*y1*x2*y2, x1*y2*y2
-	// x1*x1*y1-y1*y1*y2,  x1*x1*x2-y1*y1*x2, y2*y1*y1, x1*x1*x2-y1*y1*x2-2*y2*x1*y1, x2*y1*y1
-	//
-	// f = y1*y2*y2 - y2*y1*y1 = y1*y2*(y2-y1)
-	// m = x1*y2*y2 - x2*y1*y1
-	// c^3                 c^2                c         c^2*s                         s
-	// (x2*x2*-y2*y2)*y1,  (x2*x2*-y2*y2)*x1, f,        (x2*x2*-y2*y2)*x1-2*y1*x2*y2, m
-	// (x1*x1*-y1*y1)*y2,  (x1*x1*-y1*y1)*x2, ,         (x1*x1*-y1*y1)*x2-2*y2*x1*y1,
-	//
-	// c^3                 c^2                c         c^2*s                         s
-	// x2*x2*y1-x1*x1*y1,  x2*x2*x1-x1*x1*x2, f,        x2*x2*x1-y2*y2*x1-2*y1*x2*y2, x1*y2*y2
-	// y2*y2*y1-y1*y1*y2,  y2*y2*x1-y1*y1*x2, ,         x1*x1*x2-y1*y1*x2-2*y2*x1*y1, x2*y1*y1
-	//
-	// e = x2*x2*y1-x1*x1*y2
-	// m = x1*y2*y2-x2*y1*y1
-	// k = x1*x2*(x2-x1)
-	// c^3                 c^2                c         c^2*s                         s
-	// e,                  k,                 f,        x2*x2*x1-y2*y2*x1-2*y1*x2*y2, m
-	// f,                  m,                 ,         x1*x1*x2-y1*y1*x2-2*y2*x1*y1, 
-	//
-	// c^3                 c^2                c         c^2*s                                    s
-	// e,                  k,                 f,        x2*x2*x1-x1*x1*x2,                       m
-	// f,                  m,                 ,         y2*y2*x1+2*y1*x2*y2-y1*y1*x2-2*y2*x1*y1, 
-	//
-	// c^3                 c^2                c         c^2*s                                    s
-	// e,                  k,                 f,        k,                                       m
-	// f,                  m,                 ,         y2*y2*x1-y1*y1*x2+2*y1*x2*y2-2*y2*x1*y1, 
-	//
-	// c^3                 c^2                c         c^2*s                                    s
-	// e,                  k,                 f,        k,                                       m
-	// f,                  m,                 ,         m+2*n,                                   
-	//
 
-	// c^3                 c^2                c         c^2*s                       s^2  s
-	// (x2*x2-y2*y2)*y1,  (x2*x2-y2*y2)*x1, y1*y2*y2, (x2*x2*-y2*y2)*x1-2*y1*x2*y2, x1*y2*y2
-	// (x1*x1-y1*y1)*y2,  (x1*x1-y1*y1)*x2, y2*y1*y1, (x1*x1*-y1*y1)*x2-2*y2*x1*y1, x2*y1*y1
+	// A*(x*cos+y*sin)^2 = -x*sin+y*cos
+	// A*(x*c+y*s)^2 = -x*s+y*c
+	//
+	// A*x1*x1*c^2 + 2*A*x1*y1*c*s + A*y1*y1*s^2 = -x1*s + y1*c
+	// A*x2*x2*c^2 + 2*A*x2*y2*c*s + A*y2*y2*s^2 = -x2*s + y2*c
+	//
+	// A = (-x1*s + y1*c) / (x1*x1*c^2 + 2*x1*y1*c*s + y1*y1*s^2)
+	// A = (-x2*s + y2*c) / (x2*x2*c^2 + 2*x2*y2*c*s + y2*y2*s^2)
+	//
+	// (x1*s - y1*c) * (x2*x2*c^2 + 2*x2*y2*c*s + y2*y2*s^2) = (x2*s - y2*c) * (x1*x1*c^2 + 2*x1*y1*c*s + y1*y1*s^2)
+	// 
+	// (y1*c - x1*s) * ((x2*x2*-y2*y2)*c^2 + 2*x2*y2*c*s + y2*y2) = (y2*c - x2*s) * ((x1*x1-y1*y1)*c^2 + 2*x1*y1*c*s + y1*y1)
+	//
+	// c^3                c^2*s                          c*s^2       s          c
+	// (x2*x2-y2*y2)*y1,  -(x2*x2*-y2*y2)*x1+2*y1*x2*y2, 2*x1*x2*y2, -x1*y2*y2, y1*y2*y2
+	// (x1*x1-y1*y1)*y2,  -(x1*x1*-y1*y1)*x2+2*y2*x1*y1, 2*x2*x1*y1, -x2*y1*y1, y2*y1*y1
+
+	// c^3                c^2*s                          c*s^2       s          c
+	// e-f,               -k+m+2n,                       2*d,        -m,        f
+	// ,                  ,                              ,           , 
+
+	// d = x1*x2*(y2-y1)
+	// e = x2*x2*y1-x1*x1*y2
+	// f = y1*y2*y2 - y2*y1*y1 = y1*y2*(y2-y1)
+	// k = x1*x2*(x2-x1)
+	// m = x1*y2*y2-x2*y1*y1
+	// n = y1*y2*(x2-x1)
+
+	// c^3                c^2*s                          c^3         s          c
+	// e-f,               -k+m+2n,                       -2*d,       -m,        f+2d
+	// ,                  ,                              ,           , 
+
+	// c^3                c^2*s      s      c
+	// e-f-2*d,           -k+m+2n,   -m,    f+2d
+	// ,                  ,          ,      , 
+
+	// j1=-2*d+e-f
+	// j2=-k+m+2n
+	// j3=f+2d
+
+	//// j1=2*d+e-f
+	//// j2=k-m-2*n
+	//// j3=2*d-f
+
+	// c^3   c^2*s   s      c
+	// j1,   j2,     -m,    j3
+
+	// j1*c^3 + j3*c = (m-j2*c^2)*s
+
+	// ((j1*c^3 + j3*c)/(m-j2*c^2))^2 = 1-c^2
+	// (j1*c^3 + j3*c)^2 = (1-c^2)*(m-j2*c^2)^2
+	
+
 
 	double x1=xy[4]-xy[0],y1=xy[5]-xy[1],x2=xy[2]-xy[0],y2=xy[3]-xy[1];
 	double d=x1*x2*(y2-y1),e=x2*x2*y1-x1*x1*y2,f=y1*y2*(y2-y1);
@@ -539,11 +542,11 @@ void arc2(const std::vector<double>& xy, double* A, double* theta) {
 	// printf("residual: %lf, t: %lf\n", high_residual, glm::degrees(t_low));
 	// printf("residual: %lf, t: %lf\n", low_residual, glm::degrees(t_high));
 
-	for (int count = 0; count < 30; ++count) {
+	for (int count = 0; count < 1000; ++count) {
 		t = (t_low + t_high) / 2;
 		a = compute_trial_a(x1, y1, t);
 		residual = f2(x2, y2, a, t);
-		if (std::abs(residual) < 1e-6)
+		if (std::abs(residual) < 1e-10)
 			break;
 		// printf("residual: %lf, t: %lf, range[%lf, %lf]\n", residual, glm::degrees(t), glm::degrees(t_low), glm::degrees(t_high));
 		if (residual * high_residual <= 0.0)
@@ -558,6 +561,21 @@ void arc2(const std::vector<double>& xy, double* A, double* theta) {
 	// printf("t delta[%lf]\n", glm::degrees(t_high_old) - glm::degrees(t_low_old));
 	*A = a;
 	*theta = t;
+	{
+		double c = std::cos(*theta);
+		double s = std::sin(*theta);
+		double d = x1*x2*(y2-y1);
+		double e = x2*x2*y1-x1*x1*y2;
+		double f = y1*y2*y2-y2*y1*y1;
+		double k = x1*x2*(x2-x1);
+		double m = x1*y2*y2-x2*y1*y1;
+		double n = y1*y2*(x2-x1);
+		double j1 = -2*d+e-f;
+		double j2 = -k+m+2*n;
+		double j3 = f+2*d;
+		double rr = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		printf("residual of the equation of cos(theta): %lf\n", rr);
+	}
 	if (std::abs(residual) >= 1e-6)
 		printf("max iteration reached.\n");
 }
