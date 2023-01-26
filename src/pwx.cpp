@@ -2,7 +2,6 @@
 #define YD 1.5
 #include <stdio.h>
 #include <math.h>
-#include <functional>
 #include <stdlib.h>
 #include <algorithm>
 #include <glm/vec2.hpp>
@@ -110,10 +109,6 @@ void arc(const std::vector<double>& xy, double* AA, double* theta) {
 	// (X, Y) = [cos, -sin] * [x]
 	//          [sin,  cos]   [y]
 
-	// A = (-x1*sin(x)+y1*cos(x))/(x1*cos(x)+y1*sin(x))^2
-	// y = A*(x2*cos(x)+y2*sin(x))^2 + x2*sin(x)-y2*cos(x)
-	// y = (-x1*sin(x)+y1*cos(x))/(x1*cos(x)+y1*sin(x))^2*(x2*cos(x)+y2*sin(x))^2 + x2*sin(x)-y2*cos(x)
-
 	// A*(x*cos+y*sin)^2 = -x*sin+y*cos
 	// A*(x*c+y*s)^2 = -x*s+y*c
 	//
@@ -123,8 +118,7 @@ void arc(const std::vector<double>& xy, double* AA, double* theta) {
 	// A = (-x1*s + y1*c) / (x1*x1*c^2 + 2*x1*y1*c*s + y1*y1*s^2)
 	// A = (-x2*s + y2*c) / (x2*x2*c^2 + 2*x2*y2*c*s + y2*y2*s^2)
 	//
-
-	// !!!
+	// correct !!!
 	// (x1*s - y1*c) * (x2*x2*c^2 + 2*x2*y2*c*s + y2*y2*s^2) = (x2*s - y2*c) * (x1*x1*c^2 + 2*x1*y1*c*s + y1*y1*s^2)
 	// 
 	// (y1*c - x1*s) * ((x2*x2*-y2*y2)*c^2 + 2*x2*y2*c*s + y2*y2) = (y2*c - x2*s) * ((x1*x1-y1*y1)*c^2 + 2*x1*y1*c*s + y1*y1)
@@ -133,7 +127,7 @@ void arc(const std::vector<double>& xy, double* AA, double* theta) {
 	// (x2*x2-y2*y2)*y1,  -(x2*x2*-y2*y2)*x1+2*y1*x2*y2, 2*x1*x2*y2, -x1*y2*y2, y1*y2*y2
 	// (x1*x1-y1*y1)*y2,  -(x1*x1*-y1*y1)*x2+2*y2*x1*y1, 2*x2*x1*y1, -x2*y1*y1, y2*y1*y1
 
-	// ???
+	// incorrect ???
 	// c^3                c^2*s                          c*s^2       s          c
 	// e-f,               -k+m+2n,                       2*d,        -m,        f
 	// ,                  ,                              ,           , 
@@ -526,82 +520,25 @@ bool is_a_solution(double x1, double y1, double x2, double y2, double theta, dou
 	return (std::abs(r) < 1e-1);
 }
 
-void compute_other_roots_for_equ3(std::vector<double>* roots, double st1, double st2, double st3, double root1) {
+void compute_other_roots_for_equ3(std::vector<double>* roots, double k1, double k2, double k3, double root1) {
 	// assert(roots->size() == 1)
-	// equation: y=x^3 + st1*x^2 + st2*x + st3\n", st1, st2, st3);
-	// st1 = -(x1+x2+x3)
-	// st3 = -x1*x2*x3
+	// equation: y=x^3 + k1*x^2 + k2*x + k3\n", k1, k2, k3);
+	// k1 = -(x1+x2+x3)
+	// k3 = -x1*x2*x3
 	// a = 1
-	// b = -(x2+x3) = st1+x1
-	// c = x2*x3 = -st3/x1
+	// b = -(x2+x3) = k1+x1
+	// c = x2*x3 = -k3/x1
 	double x1 = root1;
 	double a = 1.0;
-	double b = st1+x1;
-	double c = -st3/x1;
+	double b = k1+x1;
+	double c = -k3/x1;
 	double d = b*b-4*a*c;
 	if (d > 1e-6) {
 		roots->emplace_back((-b+sqrt(d))/(2*a));
 		roots->emplace_back((-b-sqrt(d))/(2*a));
-	} else if (std::abs(d) <= 1e-6) {
+	} else if (d > -1e-6) {
 		roots->emplace_back(-b/(2*a));
 	} 
-}
-
-class Equation3 {
-public:
-	Equation3(double s1, double s2, double s3)
-		:st1(s1), st2(s2), st3(s3) {}
-	double operator() (double x) const {
-		return x*x*x + st1*x*x + st2*x + st3;
-	}
-private:
-	double st1, st2, st3;
-};
-
-void find_monotonic_interval(std::vector<double>* breaks, double st1, double st2, double st3) {
-	// equation: y = x^3 + st1*x^2 + st2*x + st3
-	//           y' = 3x^2 + 2*st1*x + st2 = 0
-	double a = 3.0;
-	double b = 2*st1;
-	double c = st2;
-	double d = b*b-4*a*c;
-	breaks->emplace_back(0.0);
-	if (d > 1e-6) {
-		double xx1 = (-b-sqrt(d))/(2*a);
-		double xx2 = (-b+sqrt(d))/(2*a);
-		if (xx1 >= 0.0 && xx1 <= 1.0)
-			breaks->emplace_back(xx1);
-		if (xx2 >= 0.0 && xx2 <= 1.0)
-			breaks->emplace_back(xx2);
-	} else if (std::abs(d) <= 1e-6) {
-		double xx = -b/(2*a);
-		if (xx >= 0.0 && xx <= 1.0)
-			breaks->emplace_back(xx);
-	}
-	breaks->emplace_back(1.0);
-}
-
-bool bisect_to_find_root(double* root, double x_low, double x_high, const Equation3& equation, int max_iterations=10000) {
-	*root = 9999.0;
-	double r_low = equation(x_low);
-	double r_high = equation(x_high);
-	if (r_low * r_high > 0)
-		return false;
-	for (int count = 0; count < max_iterations; ++count) {
-		double x = (x_low + x_high) / 2;
-		double r = equation(x);
-		//printf("x: %.10lf, r: %.10lf\n", x, r);
-		if (std::fabs(r) < 1e-6) {
-			*root = x;
-			return true;
-		} else if (r * r_high < 0.0) {
-			x_low = x;
-		} else {
-			x_high = x;
-		}
-	} 
-	*root = (x_low + x_high) / 2;
-	return false;
 }
 
 void arc2(const std::vector<double>& xy, std::vector<double>* A_array, std::vector<double>* theta_array) {
@@ -681,61 +618,40 @@ void arc2(const std::vector<double>& xy, std::vector<double>* A_array, std::vect
 	theta_array->emplace_back(theta1);
 
 	{
-		double d = x1*x2*(y2-y1);
-		double e = x2*x2*y1-x1*x1*y2;
-		double f = y1*y2*y2-y2*y1*y1;
-		double k = x1*x2*(x2-x1);
-		double m = x1*y2*y2-x2*y1*y1;
-		double n = y1*y2*(x2-x1);
-		double j1 = -2*d+e-f;
-		double j2 = -k+m+2*n;
-		double j3 = f+2*d;
+		double h1 = x2*x2*y1-x1*x1*y2-2*x1*y1*x2+2*x2*y2*x1+y1*y1*y2-y2*y2*y1;
+		double h2 = 2*x2*y2*y1-2*x1*y1*y2+x1*x1*x2-x2*x2*x1-y1*y1*x2+y2*y2*x1;
+		double h3 = 2*x1*y1*x2-2*x2*y2*x1-y1*y1*y2+y2*y2*y1;
+		double h4 = y1*y1*x2-y2*y2*x1;
+
+		double k0 = h1*h1+h2*h2;
+		double k1 = (2*h1*h3-h2*h2+2*h2*h4)/k0;
+		double k2 = (h3*h3-2*h2*h4+h4*h4)/k0;
+		double k3 = -(h4*h4)/k0;
 
 		double c = std::cos(theta1);
 		double s = std::sin(theta1);
-		double rr1 = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		double rr1 = h1*c*c*c + h2*c*c*s + h3*c + h4*s;
 		// printf("residual of the equation of cos(theta): %.10lf\n", rr1);
 		// c = -c;
-		// double rr2 = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		// double rr2 = h1*c*c*c + h2*c*c*s + h3*c + h4*s;
 		// printf("residual of the equation of cos(theta): %.10lf\n", rr2);
 		// s = -s;
-		// double rr3 = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		// double rr3 = h1*c*c*c + h2*c*c*s + h3*c + h4*s;
 		// printf("residual of the equation of cos(theta): %.10lf\n", rr3);
 		// c = -c;
-		// double rr4 = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		// double rr4 = h1*c*c*c + h2*c*c*s + h3*c + h4*s;
 		// printf("residual of the equation of cos(theta): %.10lf\n", rr4);
 		// double c2 = c*c;
-		// double rrr1 = c2*c2*c2 + st1*c2*c2 + st2*c2 + st3;
+		// double rrr1 = c2*c2*c2 + k1*c2*c2 + k2*c2 + k3;
 		// printf("residual of the equation of cos(theta)^2: %13.10lf, c2=%13.10lf bisect, c=%13.10lf, A=%.10f, theta=%.10f\n", rrr1, c2, c, a1, std::fmod(glm::degrees(theta1)+3600.0, 360.0));
 		// return;
 
-		double st0 = j1*j1+j2*j2;
-		double st1 = 2*j1*j3-j2*j2-2*m*j2;
-		double st2 = j3*j3+2*m*j2+m*m;
-		double st3 = -m*m;
-		st1 /= st0;
-		st2 /= st0;
-		st3 /= st0;
+		printf("equation: c2^3 + %lf*c2^2 + %lf*c2 + %lf = 0\n", k1, k2, k3);
+		printf("equation: y=x^3 + (%lf)*x^2 + (%lf)*x + (%lf)\n", k1, k2, k3);
 
-		printf("equation: c2^3 + %lf*c2^2 + %lf*c2 + %lf = 0\n", st1, st2, st3);
-		printf("equation: y=x^3 + (%lf)*x^2 + (%lf)*x + (%lf)\n", st1, st2, st3);
-
-		std::vector<double> breaks;
 		std::vector<double> roots;
-		find_monotonic_interval(&breaks, st1, st2, st3);
-		Equation3 equ3(st1, st2, st3);
-
-		for (size_t i = 1; i < breaks.size(); ++i) {
-			double root;
-			if (!bisect_to_find_root(&root, breaks[i-1], breaks[i], equ3)) {
-				printf("Failed to find root in [%.5lf, %.5lf]\n", breaks[i-1], breaks[i]);
-			}
-			roots.push_back(root);
-			printf("[%.5lf, %.5lf]: %.10lf\n", breaks[i-1], breaks[i], root);
-		}
-
-		// compute_other_roots_for_equ3(&roots, st1, st2, st3, c*c);
-		// std::sort(roots.begin(), roots.end());
+		compute_other_roots_for_equ3(&roots, k1, k2, k3, c*c);
+		//std::sort(roots.begin(), roots.end());
 
 		{
 			double c = std::cos(theta1);
