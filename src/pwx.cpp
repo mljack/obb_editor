@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <algorithm>
 #include <glm/vec2.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -11,6 +12,7 @@
 #include "pwx.h"
 
 namespace {
+	double pi = glm::pi<double>();
 	double pi2 = glm::two_pi<double>();
 	double pi0_5 = glm::half_pi<double>();
 }
@@ -43,26 +45,33 @@ double equ2_f()
 {return (-p-sqrt(p*p-4*q))/2;
 }
 
-double f(double x)
-{float y;
- y=x*(x*(x+_st1)+_st2)+_st3;
- return y;
+double f(double x) {
+	return x*(x*(x+_st1)+_st2)+_st3;
 }
-double xpoint(double x1,double x2)
-{double y;
- y=(x1*f(x2)-x2*f(x1))/(f(x2)-f(x1));
- return y;
+
+double xpoint(double x1, double x2) {
+	return (x1*f(x2)-x2*f(x1))/(f(x2)-f(x1));
 }
-double root(float x1,float x2)
-{double x,y,y1;
- y1=f(x1);
- do
- {x=xpoint(x1,x2);
-  y=f(x);
-  if (y*y1>0){y1=y;x1=x;}
-    else x2=x;
- }while(fabs(y)>=0.00000001);
- return x;
+
+double root(double x1, double x2) {
+	double x, y;
+	double y1 = f(x1);
+	int i = 0;
+	for(; i<10000; ++i) {
+		x = xpoint(x1, x2);
+		y = f(x);
+		if (y*y1>0){
+			y1 = y;
+			x1 = x;
+		} else {
+			x2 = x;
+		}
+		if (fabs(y) < 1e-8)
+			break;
+	}
+	if (i == 1000)
+		printf("root returns with fabs(y) == %.10lf\n", fabs(y));
+	return x;
 }
 
 double compute_a(int sin_sign,int cos_sign,int x,int y,double c)
@@ -151,9 +160,13 @@ void arc(const std::vector<double>& xy, double* AA, double* theta) {
 
 	// ((j1*c^3 + j3*c)/(m-j2*c^2))^2 = 1-c^2
 	// (j1*c^3 + j3*c)^2 = (1-c^2)*(m-j2*c^2)^2
+
+	// j1*j1*c^6 + 2*j1*j3*c^4 + j3*j3*c^2 = (1-c^2)(m^2 - 2*m*j2*c^2 + j2*j2*c^4)
+	// j1*j1*c^6 + 2*j1*j3*c^4 + j3*j3*c^2 = m^2 - 2*m*j2*c^2 + j2*j2*c^4 - m^2*c^2 + 2*m*j2*c^4 - j2*j2*c^6
+
+	// c^6          c^4                   c^2               c^0
+	// j1*j1+j2*j2, 2*j1*j3-j2*j2-2*m*j2, j3*j3+2*m*j2+m^2, -m^2
 	
-
-
 	double x1=xy[4]-xy[0],y1=xy[5]-xy[1],x2=xy[2]-xy[0],y2=xy[3]-xy[1];
 	double d=x1*x2*(y2-y1),e=x2*x2*y1-x1*x1*y2,f=y1*y2*(y2-y1);
 	double k=x1*x2*(x2-x1),m=x1*y2*y2-x2*y1*y1,n=y1*y2*(x2-x1);
@@ -491,7 +504,42 @@ double f2(double x, double y, double A, double theta) {
 	return A*xx*xx - yy;
 }
 
-void arc2(const std::vector<double>& xy, double* A, double* theta) {
+bool is_a_solution(double x1, double y1, double x2, double y2, double theta, double* A = nullptr, double* residual = nullptr) {
+	double a = compute_trial_a(x1, y1, theta);
+	double r = f2(x2, y2, a, theta);
+	if (residual)
+		*residual = r;
+	if (A)
+		*A = a;
+	// static int c=0;
+	// c++;
+	// if (c>2)
+	// 	return true;
+	return (std::abs(r) < 1e-1);
+}
+
+void compute_other_roots_for_equ3(std::vector<double>* roots, double st1, double st2, double st3, double root1) {
+	// assert(roots->size() == 1)
+	// equation: y=x^3 + st1*x^2 + st2*x + st3\n", st1, st2, st3);
+	// st1 = -(x1+x2+x3)
+	// st3 = -x1*x2*x3
+	// a = 1
+	// b = -(x2+x3) = st1+x1
+	// c = x2*x3 = -st3/x1
+	double x1 = root1;
+	double a = 1.0;
+	double b = st1+x1;
+	double c = -st3/x1;
+	double d = b*b-4*a*c;
+	if (d > 1e-6) {
+		roots->emplace_back((-b+sqrt(d))/(2*a));
+		roots->emplace_back((-b-sqrt(d))/(2*a));
+	} else if (d > -1e-6) {
+		roots->emplace_back(-b/(2*a));
+	} 
+}
+
+void arc2(const std::vector<double>& xy, std::vector<double>* A_array, std::vector<double>* theta_array) {
 	double x1 = xy[0]-xy[4];
 	double y1 = xy[1]-xy[5];
 	double x2 = xy[2]-xy[4];
@@ -542,12 +590,12 @@ void arc2(const std::vector<double>& xy, double* A, double* theta) {
 	// printf("residual: %lf, t: %lf\n", high_residual, glm::degrees(t_low));
 	// printf("residual: %lf, t: %lf\n", low_residual, glm::degrees(t_high));
 
-	for (int count = 0; count < 1000; ++count) {
+	for (int count = 0; count < 100000; ++count) {
 		t = (t_low + t_high) / 2;
 		a = compute_trial_a(x1, y1, t);
 		residual = f2(x2, y2, a, t);
-		if (std::abs(residual) < 1e-10)
-			break;
+		// if (std::abs(residual) < 1e-10)
+		// 	break;
 		// printf("residual: %lf, t: %lf, range[%lf, %lf]\n", residual, glm::degrees(t), glm::degrees(t_low), glm::degrees(t_high));
 		if (residual * high_residual <= 0.0)
 			t_high = t;
@@ -559,11 +607,15 @@ void arc2(const std::vector<double>& xy, double* A, double* theta) {
 	// printf("final residual2: %lf\n", residual);
 	// printf("t range[%lf, %lf]\n", glm::degrees(t_low_old), glm::degrees(t_high_old));
 	// printf("t delta[%lf]\n", glm::degrees(t_high_old) - glm::degrees(t_low_old));
-	*A = a;
-	*theta = t;
+	// *theta = pi2/2+t;
+	// *A = compute_trial_a(x1, y1, pi+t);
+
+	double theta1 = t;
+	double a1 = a;
+	A_array->emplace_back(a1);
+	theta_array->emplace_back(theta1);
+
 	{
-		double c = std::cos(*theta);
-		double s = std::sin(*theta);
 		double d = x1*x2*(y2-y1);
 		double e = x2*x2*y1-x1*x1*y2;
 		double f = y1*y2*y2-y2*y1*y1;
@@ -573,11 +625,143 @@ void arc2(const std::vector<double>& xy, double* A, double* theta) {
 		double j1 = -2*d+e-f;
 		double j2 = -k+m+2*n;
 		double j3 = f+2*d;
-		double rr = j1*c*c*c + j3*c - (m-j2*c*c)*s;
-		printf("residual of the equation of cos(theta): %lf\n", rr);
+
+		double c = std::cos(theta1);
+		double s = std::sin(theta1);
+		double rr1 = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		// printf("residual of the equation of cos(theta): %.10lf\n", rr1);
+		// c = -c;
+		// double rr2 = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		// printf("residual of the equation of cos(theta): %.10lf\n", rr2);
+		// s = -s;
+		// double rr3 = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		// printf("residual of the equation of cos(theta): %.10lf\n", rr3);
+		// c = -c;
+		// double rr4 = j1*c*c*c + j3*c - (m-j2*c*c)*s;
+		// printf("residual of the equation of cos(theta): %.10lf\n", rr4);
+		// double c2 = c*c;
+		// double rrr1 = c2*c2*c2 + st1*c2*c2 + st2*c2 + st3;
+		// printf("residual of the equation of cos(theta)^2: %13.10lf, c2=%13.10lf bisect, c=%13.10lf, A=%.10f, theta=%.10f\n", rrr1, c2, c, a1, std::fmod(glm::degrees(theta1)+3600.0, 360.0));
+		// return;
+
+		double st0 = j1*j1+j2*j2;
+		double st1 = 2*j1*j3-j2*j2-2*m*j2;
+		double st2 = j3*j3+2*m*j2+m*m;
+		double st3 = -m*m;
+		st1 /= st0;
+		st2 /= st0;
+		st3 /= st0;
+
+		printf("equation: c2^3 + %lf*c2^2 + %lf*c2 + %lf = 0\n", st1, st2, st3);
+		printf("equation: y=x^3 + (%lf)*x^2 + (%lf)*x + (%lf)\n", st1, st2, st3);
+
+		std::vector<double> roots;
+		compute_other_roots_for_equ3(&roots, st1, st2, st3, c*c);
+		//std::sort(roots.begin(), roots.end());
+
+		{
+			double c = std::cos(theta1);
+			double s = std::cos(theta1);
+			printf("root1: %.10lf\n", c*c);
+			printf("%lf*((%lf)*x+(%lf)*y)^2 = (%lf)*x+(%lf)*y\n", a1, c, s, -s, c);
+			printf("   [%ld]: theta=%14.10f, A=%14.10f, residual=%13.10f\n", 9L, std::fmod(glm::degrees(theta1)+3600.0, 360.0), a1, residual);
+		}
+
+		double A, residual;
+		for(auto& r : roots) {
+			printf("root: %.10lf\n", r);
+			double theta = std::acos(std::min(1.0, std::sqrt(r)));
+			if (is_a_solution(x1, y1, x2, y2, theta, &A, &residual)) {
+				if (A > 0) {
+					A_array->emplace_back(A);
+					theta_array->emplace_back(theta);
+				} else {
+					A_array->emplace_back(-A);
+					theta_array->emplace_back(theta + pi);
+				}
+				double c = std::cos(theta_array->back());
+				double s = std::sin(theta_array->back());
+				printf("%lf*((%lf)*x+(%lf)*y)^2 = (%lf)*x+(%lf)*y\n", A_array->back(), c, s, -s, c);
+				printf("   [%ld]: theta=%14.10f, A=%14.10f, residual=%13.10f\n", &r-roots.data(), std::fmod(glm::degrees(theta_array->back())+3600.0, 360.0), A_array->back(), residual);
+			} else {
+				printf("                                                residual=%13.10f\n", residual);
+			}
+			if (is_a_solution(x1, y1, x2, y2, -theta, &A, &residual)) {
+				if (A > 0) {
+					A_array->emplace_back(A);
+					theta_array->emplace_back(-theta);
+				} else {
+					A_array->emplace_back(-A);
+					theta_array->emplace_back(-theta + pi);
+				}
+				double c = std::cos(theta_array->back());
+				double s = std::sin(theta_array->back());
+				printf("%lf*((%lf)*x+(%lf)*y)^2 = (%lf)*x+(%lf)*y\n", A_array->back(), c, s, -s, c);
+				printf("   [%ld]: theta=%14.10f, A=%14.10f, residual=%13.10f\n", &r-roots.data(), std::fmod(glm::degrees(theta_array->back())+3600.0, 360.0), A_array->back(), residual);
+			} else {
+				printf("                                                residual=%13.10f\n", residual);
+			}
+		}
+		{
+			std::vector<double> tt = {102.9073022722, 31.4085098479, 75.0802407349};
+			for (auto& ttt : tt) {
+				double x = std::cos(glm::radians(ttt+90.0));
+				x = x*x;
+				double y = x*x*x + (-2.098593)*x*x + (1.274839)*x + (-0.174501);
+				printf("x=%lf, y=%lf\n", x, y);
+			}
+
+		}
+		printf("================================================================\n");
+
+		// // newton method to find roots.
+		// _st1=st1;_st2=st2;_st3=st3;
+		// c2 = root(0, 1);
+		// *theta = std::acos(std::min(1.0, std::sqrt(c2)));
+		// *A = compute_trial_a(x1, y1, *theta);
+		// double root2 = c2;
+		// double rrr2 = c2*c2*c2 + st1*c2*c2 + st2*c2 + st3;
+		// roots.emplace_back(root2-roots[0]);
+
+		// if (!is_a_solution(x1, y1, x2, y2, *theta, A)) {
+		// 	*theta = -*theta;
+		// 	*A = compute_trial_a(x1, y1, *theta);
+		// 	if (*A < 0) {
+		// 		*A = -*A;
+		// 		*theta += pi;
+		// 	}
+		// 	//printf("reversed. %d\n", is_a_solution(x1, y1, x2, y2, *theta));
+		// }
+ 
+		//printf("newton A1: %.10lf\n", *A);
+		// if (*A < 0) {
+		// 	*A = -*A;
+		// 	*theta += pi;
+		// }
+		//printf("residual of the equation of cos(theta)^2: %13.10lf, c2=%13.10lf newton, c=%13.10lf, A=%.10f, theta=%.10f\n", rrr2, c2, std::cos(*theta), *A, std::fmod(glm::degrees(*theta)+3600.0, 360.0));
+
+		// double root3 = -st3/root1/root2;
+		// {
+		// 	double c2 = root3;
+		// 	double rrr3 = c2*c2*c2 + st1*c2*c2 + st2*c2 + st3;
+		// 	printf("residual of the equation of cos(theta)^2: %13.10lf, c2=%13.10lf viete\n", rrr3, c2);
+		// }
+
+		// if (*A < 0) {
+		// 	*A = -*A;
+		// 	*theta += pi;
+		// }
+
+		// double a1, a2;
+		// bool check_bisect = is_a_solution(x1, y1, x2, y2, theta1, &a1);
+		// bool check_newton = is_a_solution(x1, y1, x2, y2, *theta, &a2);
+		//printf("theta bisect %14.10lf, A: %15.10lf, %d\n", std::fmod(glm::degrees(theta1)+3600.0, 360.0), a1, (int)check_bisect);
+		//printf("theta newton %14.10lf, A: %15.10lf, %d\n\n", std::fmod(glm::degrees(*theta)+3600.0, 360.0), a2, (int)check_newton);
+
+
 	}
-	if (std::abs(residual) >= 1e-6)
-		printf("max iteration reached.\n");
+	// if (std::abs(residual) >= 1e-6)
+	// 	printf("max iteration reached.\n");
 }
 
 // void pwx_test() {

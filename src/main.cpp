@@ -754,16 +754,13 @@ void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfl
 
 #include "pwx.h"
 
-void build_curve_buffer(const std::map<int, Marker>& markers, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf) {
+void build_curve_buffer(double A, double theta, const std::map<int, Marker>& markers, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf, const glm::vec3& c) {
 	std::vector<double> xy;
 	for (const auto& [idx, m] : markers) {
 		xy.push_back(m.x);
 		xy.push_back(m.y);
 	}
-
 	int num_of_steps = 31;
-	double A, theta;
-	arc2(xy, &A, &theta);
 
 	glm::dvec2 p1(xy[0], xy[1]);
 	glm::dvec2 p2(xy[2], xy[3]);
@@ -778,12 +775,12 @@ void build_curve_buffer(const std::map<int, Marker>& markers, std::vector<GLfloa
 	v_buf->push_back(base.x);
 	v_buf->push_back(g_image_height - base.y);
 	v_buf->push_back(10.0f);
-	v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
+	v_buf->push_back(c[0]); v_buf->push_back(c[1]); v_buf->push_back(c[2]); v_buf->push_back(1.0f);
 	glm::dvec2 axis = base + 100.0 * y_dir;
 	v_buf->push_back(axis.x);
 	v_buf->push_back(g_image_height - axis.y);
 	v_buf->push_back(10.0f);
-	v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
+	v_buf->push_back(c[0]); v_buf->push_back(c[1]); v_buf->push_back(c[2]); v_buf->push_back(1.0f);
 	idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
 
 	base_idx = (GLuint)v_buf->size() / 7;
@@ -793,7 +790,7 @@ void build_curve_buffer(const std::map<int, Marker>& markers, std::vector<GLfloa
 		v_buf->push_back(p.x);
 		v_buf->push_back(g_image_height - p.y);
 		v_buf->push_back(10.0f);
-		v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
+		v_buf->push_back(c[0]); v_buf->push_back(c[1]); v_buf->push_back(c[2]); v_buf->push_back(1.0f);
 		if (i != 0) {
 			idx_buf->push_back(base_idx + i - 1); idx_buf->push_back(base_idx + i);
 		}
@@ -805,7 +802,7 @@ void build_curve_buffer(const std::map<int, Marker>& markers, std::vector<GLfloa
 		v_buf->push_back(p.x);
 		v_buf->push_back(g_image_height - p.y);
 		v_buf->push_back(10.0f);
-		v_buf->push_back(1.0f); v_buf->push_back(0.0f); v_buf->push_back(0.0f); v_buf->push_back(1.0f);
+		v_buf->push_back(c[0]); v_buf->push_back(c[1]); v_buf->push_back(c[2]); v_buf->push_back(1.0f);
 		if (i != 0) {
 			idx_buf->push_back(base_idx + i - 1); idx_buf->push_back(base_idx + i);
 		}
@@ -878,7 +875,8 @@ int main(int, char**) {
 #if defined(__EMSCRIPTEN__)
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
 #elif defined(__linux__)
-	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
+	//SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL);
 #elif defined(_WIN32)
 	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_MAXIMIZED);
 #else
@@ -1066,8 +1064,19 @@ int main(int, char**) {
 			std::vector<GLfloat> line_buf, wide_line_buf, wide_line_buf2;
 			std::vector<GLuint> line_idx, wide_line_idx, wide_line_idx2;
 			build_markers_buffer(g_markers, &line_buf, &line_idx, &wide_line_buf, &wide_line_idx, &wide_line_buf2, &wide_line_idx2);
-			if (g_markers.size() >= 3)
-				build_curve_buffer(g_markers, &wide_line_buf, &wide_line_idx);
+			if (g_markers.size() >= 3) {
+				std::vector<double> xy;
+				for (const auto& [idx, m] : g_markers) {
+					xy.push_back(m.x);
+					xy.push_back(m.y);
+				}
+				std::vector<double> A, theta;
+				arc2(xy, &A, &theta);
+				std::vector<glm::vec3> c = {red, yellow, blue, green, cyan, white};
+				for (size_t i = 0; i < A.size(); ++i) {
+					build_curve_buffer(A[i], theta[i], g_markers, &wide_line_buf, &wide_line_idx, c[i%c.size()]);
+				}
+			}
 			lines.update_buffers_for_nontextured_geoms(line_buf, line_idx);
 			wide_lines.update_buffers_for_nontextured_geoms(wide_line_buf, wide_line_idx);
 			wide_lines2.update_buffers_for_nontextured_geoms(wide_line_buf2, wide_line_idx2);

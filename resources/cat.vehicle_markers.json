@@ -1,0 +1,38 @@
+[
+  [
+    {
+      "frame_id": 0,
+      "heading_angle": 0.0,
+      "id": 0,
+      "length": 100.0,
+      "manually_created": true,
+      "width": 50.0,
+      "x": 0.0,
+      "y": 0.0
+    }
+  ],
+  [
+    {
+      "frame_id": 0,
+      "heading_angle": 0.0,
+      "id": 1,
+      "length": 100.0,
+      "manually_created": true,
+      "width": 50.0,
+      "x": 0.0,
+      "y": 100.0
+    }
+  ],
+  [
+    {
+      "frame_id": 0,
+      "heading_angle": 0.2000008374452591,
+      "id": 2,
+      "length": 100.0,
+      "manually_created": true,
+      "width": 50.0,
+      "x": -20.0,
+      "y": 150.0
+    }
+  ]
+]
