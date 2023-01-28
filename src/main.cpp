@@ -1071,7 +1071,7 @@ int main(int, char**) {
 					xy.push_back(m.y);
 				}
 				std::vector<double> A, theta;
-				arc2(xy, &A, &theta);
+				arc(xy, &A, &theta);
 				std::vector<glm::vec3> c = {red, yellow, blue, green, cyan, white};
 				for (size_t i = 0; i < A.size(); ++i) {
 					build_curve_buffer(A[i], theta[i], g_markers, &wide_line_buf, &wide_line_idx, c[i%c.size()]);
