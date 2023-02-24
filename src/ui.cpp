@@ -210,6 +210,11 @@ void show_file_list() {
 	ImGui::SliderFloat("High Certainty Threshold", &g_high_certainty_threshold, 0.0f, 1.0f);
 	ImGui::PopItemWidth();
 
+	ImGui::PushItemWidth(-180.0f);
+	ImGui::Checkbox("Hide Low Score Markers", &g_hide_low_score_markers);
+	ImGui::SliderFloat("Score Threshold", &g_low_score_threshold2, 0.0f, 1.0f);
+	ImGui::PopItemWidth();
+
 	ImGui::Checkbox("Show ALL Markers", &g_show_all_markers);
 	ImGui::SameLine();
 	ImGui::Checkbox("Hide Manual Markers", &g_hide_manually_created_markers);

@@ -29,5 +29,7 @@ extern float g_low_score_threshold;
 extern float g_high_score_threshold;
 extern float g_low_certainty_threshold;
 extern float g_high_certainty_threshold;
+extern bool g_hide_low_score_markers;
+extern float g_low_score_threshold2;
 extern Marker* g_marker;
 extern bool g_is_modified;

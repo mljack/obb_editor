@@ -119,6 +119,8 @@ float g_low_score_threshold = 0.5f;
 float g_high_score_threshold = 0.7f;
 float g_low_certainty_threshold = 0.3f;
 float g_high_certainty_threshold = 0.75f;
+bool g_hide_low_score_markers = false;
+float g_low_score_threshold2 = 0.25f;
 
 unsigned int g_background_texture_id = ~0U;
 
@@ -740,6 +742,8 @@ void build_marker_geom(const Marker& m, const glm::vec3& color, std::vector<GLfl
 void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
 	std::vector<GLfloat>* v_buf2, std::vector<GLuint>* idx_buf2, std::vector<GLfloat>* v_buf3, std::vector<GLuint>* idx_buf3) {
 	for (const auto& [idx, m] : markers) {
+		if (g_hide_low_score_markers && m.score < g_low_score_threshold2)
+			continue;
 		std::string v_type = "***";
 		if (g_vehicle_type_names.count(m.type) > 0)
 			v_type = g_vehicle_type_names.at(m.type);
