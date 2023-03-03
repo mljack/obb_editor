@@ -4,8 +4,15 @@ struct Marker {
 public:
 	int id = 0;
 	int type = 0;
+	// 0: particle
+	// 1: center gravity
+	// 2: directional gravity
 	float x = 0.0f;
 	float y = 0.0f;
+	float vx = 30.0f;
+	float vy = -50.0f;
+	float ax = 0.0f;
+	float ay = 0.0f;
 	float length = 100.0f;
 	float width = 50.0f;
 	float heading = 0.0f;

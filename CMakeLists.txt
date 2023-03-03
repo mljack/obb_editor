@@ -41,7 +41,7 @@ include_directories(
 )
 endif()
 
-add_executable(obb_editor
+set(SOURCE
 	third_party/pugixml/pugixml.cpp
 	third_party/imgui/imgui.cpp
 	third_party/imgui/imgui_demo.cpp
@@ -57,6 +57,19 @@ add_executable(obb_editor
 	src/pv.cpp
 	src/pwx.cpp
 )
+
+set(HEADERS
+	src/fs_helper.h
+	src/marker.h
+	src/material.h
+	src/pv.h
+	src/pwx.h
+	src/shaders.h
+	src/texture.h
+	src/ui.h
+)
+
+add_executable(obb_editor ${SOURCE} ${HEADERS})
 
 if(MSVC)
 	target_link_libraries(obb_editor

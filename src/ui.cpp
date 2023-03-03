@@ -6,11 +6,13 @@
 
 #include <imgui.h>
 #include <memory>
+#include <map>
 #include <algorithm>
 #include <functional>
 #include <filesystem>
 
 #include "marker.h"
+#include "pv.h"
 
 namespace {
 	bool g_rescan_files = true;
@@ -21,6 +23,14 @@ namespace {
 }
 
 extern bool g_parabola_test;
+extern bool g_show_box;
+extern bool g_show_cross;
+extern bool g_show_point;
+extern bool g_simulating;
+extern bool g_replaying_sim;
+extern double g_sim_time;
+extern double g_sim_timestep;
+extern std::map<int, Marker> g_markers;
 
 void load_background(const std::string& file_path);
 void recursive_sort_file_tree(std::shared_ptr<Entry> base);
@@ -182,7 +192,7 @@ bool load_next_file(std::shared_ptr<Entry> base) {
 	return false;
 }
 
-void show_file_list() {
+void render_side_bar() {
 	static bool once = true;
 	if (once) {
 		once = false;
@@ -206,8 +216,6 @@ void show_file_list() {
 
 	ImGui::PushItemWidth(-180.0f);
 	ImGui::Checkbox("Use Metric Thresholds:", &g_use_metric_threshold);
-	ImGui::SameLine();
-	ImGui::Checkbox("P_parabola test", &g_parabola_test);
 	ImGui::SliderFloat("Low Score Threshold", &g_low_score_threshold, 0.0f, 1.0f);
 	ImGui::SliderFloat("High Score Threshold", &g_high_score_threshold, 0.0f, 1.0f);
 	ImGui::SliderFloat("Low Certainty Threshold", &g_low_certainty_threshold, 0.0f, 1.0f);
@@ -265,6 +273,104 @@ void show_file_list() {
 	ImGui::End();
 }
 
+void render_combo(const char* title, const char** items, int n_items, int* idx) {
+	const char* timestep_opt = items[*idx];
+	if (ImGui::BeginCombo(title, timestep_opt)) {
+		for (int i = 0; i < n_items; ++i) {
+			bool is_selected = (*idx == i);
+			if (ImGui::Selectable(items[i], is_selected))
+				*idx = i;
+			if (is_selected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+}
+
+void render_simulation_settings() {
+	static bool once = true;
+	if (once) {
+		once = false;
+		ImGui::SetNextWindowSize(ImVec2(350, 900));
+	}
+	ImGui::SetNextWindowPos(ImVec2(1320, 10));
+	ImGui::SetNextWindowBgAlpha(0.8f);
+	ImGui::Begin("Simulation Settings");
+
+	static int problem_idx = 1;
+	static const char* problems[] = { "Rotated Parabola", "One-Body", "Two-Body", "Three-Body", "N-Body" };
+	render_combo("Problem", problems, IM_ARRAYSIZE(problems), &problem_idx);
+	g_parabola_test = (problem_idx == 0);
+	if (g_parabola_test) {
+		g_show_box = false;
+		g_show_cross = g_show_point = true;
+	} else {
+		g_show_box = g_show_cross = false;
+		g_show_point = true;
+	}
+
+	if (!g_parabola_test) {
+		static int timestep_idx = 4;
+		static double steps[] = { 0.00001, 0.0001, 0.001, 0.01, 0.1, 0.2, 0.5 };
+		static const char* timestep_opts[] = { "0.00001", "0.0001", "0.001", "0.01", "0.1", "0.2", "0.5" };
+		render_combo("Time Step", timestep_opts, IM_ARRAYSIZE(timestep_opts), &timestep_idx);
+		g_sim_timestep = steps[timestep_idx];
+
+		static int integrator_idx = 0;
+		static const char* integrator_names[] = { "Eular", "Backward Eular", "Runge-Kutta (4th order)", "Verlet" };
+		render_combo("Integrator", integrator_names, IM_ARRAYSIZE(integrator_names), &integrator_idx);
+		const char* integrator_name = integrator_names[integrator_idx];
+
+		static float sim_time_f = 0.0f;
+		static float max_time = 0.0f;
+		if (g_simulating) {
+			if (ImGui::Button("Stop")) {
+				g_simulating = false;
+				stop_simulation(&g_markers);
+			}
+		} else {
+			if (ImGui::Button("Start") && !g_markers.empty()) {
+				if (sim_time_f < max_time)
+					seek_to_sim_time_moment(max_time, &g_markers);
+				g_simulating = true;
+				start_simulation(g_markers);
+			}
+		}
+		ImGui::SameLine();
+		if (g_replaying_sim) {
+			if (ImGui::Button("Stop Replay"))
+				g_replaying_sim = false;
+		} else {
+			if (ImGui::Button("Replay")) {
+				g_replaying_sim = true;
+				if (sim_time_f >= max_time)
+					sim_time_f = 0.0f;
+			}
+		}
+		if (g_replaying_sim) {
+			if (sim_time_f < max_time)
+				seek_to_sim_time_moment(sim_time_f + g_sim_timestep, &g_markers);
+			else
+				g_replaying_sim = false;
+		}
+
+		if (ImGui::Button("Clear trajectories")) {
+			g_particles.clear();
+			g_sim_time = 0.0;
+			max_time = 0.0f;
+		}
+		sim_time_f = (float)g_sim_time;
+		if (ImGui::SliderFloat("Sim Time", &sim_time_f, 0.0f, max_time, "%.4f")) {
+			seek_to_sim_time_moment(sim_time_f, &g_markers);
+		}
+		g_sim_time = sim_time_f;
+		max_time = std::max(sim_time_f, max_time);
+	}
+
+	ImGui::End();
+}
+
 void render_ui() {
-  show_file_list();
+	render_side_bar();
+	render_simulation_settings();
 }
