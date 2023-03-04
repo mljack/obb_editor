@@ -9,8 +9,8 @@ public:
 	// 2: directional gravity
 	float x = 0.0f;
 	float y = 0.0f;
-	float vx = 30.0f;
-	float vy = -50.0f;
+	float vx = 0.0f;
+	float vy = -30.0f;
 	float ax = 0.0f;
 	float ay = 0.0f;
 	float length = 100.0f;

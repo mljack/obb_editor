@@ -137,9 +137,11 @@ bool g_show_box = true;
 bool g_show_cross = true;
 bool g_show_point = true;
 double g_sim_timestep = 0.1;
+int g_sim_substeps = 10;
 double g_sim_time = 0.0;
 bool g_simulating = false;
 bool g_replaying_sim = false;
+int g_integrator_idx = 0;
 
 Marker* g_marker = nullptr;
 
@@ -1079,6 +1081,11 @@ int main(int, char**) {
 			wide_lines.set_material(g_line_material);
 			wide_lines2.set_material(g_line_material);
 			initialized = true;
+
+			Marker m;
+			m.x = 700.0;
+			m.y = -600.0;
+			g_markers.emplace(0, m);
 		}
 
 		ImGui_ImplOpenGL3_NewFrame();
@@ -1129,6 +1136,12 @@ int main(int, char**) {
 			}
 
 			build_particles_buffer(g_particles, &line_buf, &line_idx, &wide_line_buf, &wide_line_idx, &wide_line_buf2, &wide_line_idx2);
+			std::map<int, Marker> field_markers;
+			Marker center;
+			center.x = 800.0;
+			center.y = -600.0;
+			field_markers.emplace(0, center);
+			build_markers_buffer(field_markers, &line_buf, &line_idx, &wide_line_buf, &wide_line_idx, &wide_line_buf2, &wide_line_idx2);
 
 			lines.update_buffers_for_nontextured_geoms(line_buf, line_idx);
 			wide_lines.update_buffers_for_nontextured_geoms(wide_line_buf, wide_line_idx);
@@ -1152,9 +1165,10 @@ int main(int, char**) {
 		SDL_GL_SwapWindow(window);
 
 		if (g_simulating)
-			run_one_simulation_step(g_sim_timestep);
+			for(int i = 0; i < g_sim_substeps; ++i)
+				run_one_simulation_step(g_sim_timestep / g_sim_substeps, g_integrator_idx);
 #if !defined(__EMSCRIPTEN__)
-		SDL_Delay(17);
+		//SDL_Delay(17);
 #endif
 	};
 #if defined(__EMSCRIPTEN__)

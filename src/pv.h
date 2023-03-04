@@ -28,12 +28,37 @@ struct Particle {
 	vec2d pos;
 	vec2d vel;
 	vec2d accel;
+	vec2d pos_predicted;
+	vec2d vel_predicted;
+	vec2d accel_predicted;
 	std::vector<TrajPt> traj;
+};
+
+class Field {
+public:
+	Field() {}
+	virtual ~Field() {}
+	virtual vec2d compute_accel(const vec2d& pos) = 0;
+	virtual double compute_potential(const vec2d& pos) = 0;
+};
+
+class GravityOnEarth : public Field {
+public:
+	vec2d compute_accel(const vec2d& pos) override;
+	double compute_potential(const vec2d& pos) override;
+};
+
+class GravityInSpace : public Field {
+public:
+	GravityInSpace(const vec2d& c) { center = c; }
+	vec2d compute_accel(const vec2d& pos) override;
+	double compute_potential(const vec2d& pos) override;
+	vec2d center;
 };
 
 extern std::vector<Particle> g_particles;
 
 void start_simulation(std::map<int, Marker>& markers);
-void run_one_simulation_step(double timestep);
+void run_one_simulation_step(double timestep, int method_idx);
 void stop_simulation(std::map<int, Marker>* markers);
 void seek_to_sim_time_moment(double t, std::map<int, Marker>* markers);

@@ -30,6 +30,8 @@ extern bool g_simulating;
 extern bool g_replaying_sim;
 extern double g_sim_time;
 extern double g_sim_timestep;
+extern int g_sim_substeps;
+extern int g_integrator_idx;
 extern std::map<int, Marker> g_markers;
 
 void load_background(const std::string& file_path);
@@ -316,10 +318,11 @@ void render_simulation_settings() {
 		render_combo("Time Step", timestep_opts, IM_ARRAYSIZE(timestep_opts), &timestep_idx);
 		g_sim_timestep = steps[timestep_idx];
 
-		static int integrator_idx = 0;
-		static const char* integrator_names[] = { "Eular", "Backward Eular", "Runge-Kutta (4th order)", "Verlet" };
-		render_combo("Integrator", integrator_names, IM_ARRAYSIZE(integrator_names), &integrator_idx);
-		const char* integrator_name = integrator_names[integrator_idx];
+		ImGui::SliderInt("Substeps", &g_sim_substeps, 1, 30);
+
+		static const char* integrator_names[] = { "Eular", "Explicit Trapezoid", "Taylor (2nd order)", "Taylor (2nd order) + Explicit Trapezoid", "Runge-Kutta (4th order)", "Verlet" };
+		render_combo("Integrator", integrator_names, IM_ARRAYSIZE(integrator_names), &g_integrator_idx);
+		const char* integrator_name = integrator_names[g_integrator_idx];
 
 		static float sim_time_f = 0.0f;
 		static float max_time = 0.0f;
@@ -353,8 +356,31 @@ void render_simulation_settings() {
 			else
 				g_replaying_sim = false;
 		}
-
-		if (ImGui::Button("Clear trajectories")) {
+		ImGui::SameLine();
+		if (ImGui::Button("Reset")) {
+			g_simulating = false;
+			g_replaying_sim = false;
+			sim_time_f = 0.0f;
+			max_time = 0.0;
+			g_particles.clear();
+			g_markers.clear();
+			Marker m;
+			m.x = 700.0;
+			m.y = -600.0;
+			g_markers.emplace(0, m);
+		}
+		if (ImGui::Button("Clear Trajectories")) {
+			g_simulating = false;
+			g_replaying_sim = false;
+			g_particles.clear();
+			g_sim_time = 0.0;
+			max_time = 0.0f;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Clear Particles")) {
+			g_simulating = false;
+			g_replaying_sim = false;
+			g_markers.clear();
 			g_particles.clear();
 			g_sim_time = 0.0;
 			max_time = 0.0f;
