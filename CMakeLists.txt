@@ -33,6 +33,7 @@ include_directories(
 	third_party/glm
 	third_party/imgui
 	third_party/imgui/backends
+	third_party/implot
 )
 
 if(MSVC)
@@ -50,6 +51,8 @@ set(SOURCE
 	third_party/imgui/imgui_widgets.cpp
 	third_party/imgui/backends/imgui_impl_sdl.cpp
 	third_party/imgui/backends/imgui_impl_opengl3.cpp
+	third_party/implot/implot.cpp
+	third_party/implot/implot_items.cpp
 	src/main.cpp
 	src/fs_helper.cpp
 	src/texture.cpp
