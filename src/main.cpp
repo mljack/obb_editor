@@ -24,6 +24,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl.h>
 #include <imgui_impl_opengl3.h>
+#include <implot.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -541,9 +542,11 @@ void handle_mouse_wheel_event(const SDL_Event& e) {
 	if (!up)
 		s = 1.0f / s;
 
-	g_offset_x += g_image_x * g_scale * (1 - s) ;
-	g_offset_y += (g_image_height - g_image_y) * g_scale * (1 - s) ;
-	g_scale = std::min(200.0f, std::max(1.0f/200.0f, g_scale*s));
+	float old_scale = g_scale;
+	g_scale = std::min(2000.0f, std::max(1.0f/2000.0f, g_scale*s));
+	g_offset_x += g_image_x * (old_scale - g_scale);
+	g_offset_y += (g_image_height - g_image_y) * (old_scale - g_scale);
+	printf("g_scale: %f \t g_offset x: %f\t %f\n", g_scale, g_offset_x, g_offset_y);
 }
 
 Material* g_background_img_material = nullptr;
@@ -930,7 +933,7 @@ int main(int, char**) {
 #else
 	#error Unsupported platform
 #endif
-	SDL_Window* window = SDL_CreateWindow("obb_editor", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, g_window_width, g_window_height, window_flags);
+	SDL_Window* window = SDL_CreateWindow("Particle Simulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, g_window_width, g_window_height, window_flags);
 	SDL_GLContext gl_context = SDL_GL_CreateContext(window);
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_GL_SetSwapInterval(1); // Enable vsync
@@ -948,6 +951,7 @@ int main(int, char**) {
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
+	ImPlot::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
 	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
@@ -1023,6 +1027,7 @@ int main(int, char**) {
 
 	// Main loop
 	bool done = false;
+	bool is_minimized = false;
 #if defined(__EMSCRIPTEN__)
 	// See comments around line 30.
 	loop = [&]()
@@ -1043,20 +1048,27 @@ int main(int, char**) {
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL2_ProcessEvent(&event);
-			if (event.type == SDL_QUIT)
+			if (event.type == SDL_QUIT) {
 				done = true;
-			else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
+			} else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window)) {
 				done = true;
-			else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+			} else if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) {
 				done = true;
-			else if (!io.WantCaptureKeyboard) {
-				if (event.type == SDL_KEYDOWN) {
-					if (event.key.keysym.sym == SDLK_ESCAPE)
-						done = true;
-					else
-						handle_key_down_event(event);
-				} else if (event.type == SDL_KEYUP)
-						handle_key_up_event(event);
+			} else if (event.type == SDL_WINDOWEVENT) {
+				if (event.window.event == SDL_WINDOWEVENT_MINIMIZED) {
+					if (!is_minimized) {
+						SDL_MinimizeWindow(window);
+						is_minimized = true;
+					}
+				} else if (event.window.event == SDL_WINDOWEVENT_RESTORED) {
+					if (is_minimized) {
+						SDL_RestoreWindow(window);
+						SDL_MaximizeWindow(window);
+						is_minimized = false;
+					}
+				}
+			} else {
+				//printf("event[%x]\n", event.type);
 			}
 
 			if (!io.WantCaptureMouse) {
@@ -1071,7 +1083,11 @@ int main(int, char**) {
 			}
 		}
 
+		char title[256];
+		sprintf(title, "Particle Simulator - scale:[%f]", g_scale);
+		SDL_SetWindowTitle(window, title);
 		if (!initialized) {
+			//SDL_MaximizeWindow(window);
 			SDL_GL_GetDrawableSize(window, &g_window_width, &g_window_height);
 			printf("canvas size: [%d, %d]\n", g_window_width, g_window_height);
 			//load_background(default_background);
@@ -1182,6 +1198,7 @@ int main(int, char**) {
 	clean_up();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
+	ImPlot::DestroyContext();
 	ImGui::DestroyContext();
 
 	SDL_GL_DeleteContext(gl_context);

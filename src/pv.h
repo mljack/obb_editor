@@ -57,6 +57,7 @@ public:
 };
 
 extern std::vector<Particle> g_particles;
+extern std::vector<float> g_t_array, g_energy_array;
 
 void start_simulation(std::map<int, Marker>& markers);
 void run_one_simulation_step(double timestep, int method_idx);

@@ -5,6 +5,7 @@
 #endif
 
 #include <imgui.h>
+#include <implot.h>
 #include <memory>
 #include <map>
 #include <algorithm>
@@ -198,7 +199,7 @@ void render_side_bar() {
 	static bool once = true;
 	if (once) {
 		once = false;
-		ImGui::SetNextWindowSize(ImVec2(350, 900));
+		ImGui::SetNextWindowSize(ImVec2(350, 1010));
 	}
 	ImGui::SetNextWindowPos(ImVec2(10, 10));
 	ImGui::SetNextWindowBgAlpha(0.8f);
@@ -257,7 +258,7 @@ void render_side_bar() {
 #endif
 	}
 	ImGui::PopItemWidth();
-	ImGui::BeginChild("##file_list", ImVec2(330, 560), true, ImGuiWindowFlags_HorizontalScrollbar);
+	ImGui::BeginChild("##file_list", ImVec2(330, 670), true, ImGuiWindowFlags_HorizontalScrollbar);
 	if (g_rescan_files) {
 		std::string base_path = std::string() + folder_path;
 		if (std::filesystem::is_directory(base_path)) {
@@ -293,7 +294,7 @@ void render_simulation_settings() {
 	static bool once = true;
 	if (once) {
 		once = false;
-		ImGui::SetNextWindowSize(ImVec2(350, 900));
+		ImGui::SetNextWindowSize(ImVec2(350, 1010));
 	}
 	ImGui::SetNextWindowPos(ImVec2(1320, 10));
 	ImGui::SetNextWindowBgAlpha(0.8f);
@@ -320,7 +321,7 @@ void render_simulation_settings() {
 
 		ImGui::SliderInt("Substeps", &g_sim_substeps, 1, 30);
 
-		static const char* integrator_names[] = { "Eular", "Explicit Trapezoid", "Taylor (2nd order)", "Taylor (2nd order) + Explicit Trapezoid", "Runge-Kutta (4th order)", "Verlet" };
+		static const char* integrator_names[] = { "Eular", "Backward Eular", "Implicit Trapezoid", "Explicit Trapezoid", "Taylor (2nd order)", "Taylor (2nd order) + Explicit Trapezoid", "Velocity Verlet", "Runge-Kutta (4th order)" };
 		render_combo("Integrator", integrator_names, IM_ARRAYSIZE(integrator_names), &g_integrator_idx);
 		const char* integrator_name = integrator_names[g_integrator_idx];
 
@@ -363,7 +364,10 @@ void render_simulation_settings() {
 			sim_time_f = 0.0f;
 			max_time = 0.0;
 			g_particles.clear();
+			g_t_array.clear();
+			g_energy_array.clear();
 			g_markers.clear();
+			g_marker = nullptr;
 			Marker m;
 			m.x = 700.0;
 			m.y = -600.0;
@@ -373,6 +377,8 @@ void render_simulation_settings() {
 			g_simulating = false;
 			g_replaying_sim = false;
 			g_particles.clear();
+			g_t_array.clear();
+			g_energy_array.clear();
 			g_sim_time = 0.0;
 			max_time = 0.0f;
 		}
@@ -382,6 +388,9 @@ void render_simulation_settings() {
 			g_replaying_sim = false;
 			g_markers.clear();
 			g_particles.clear();
+			g_t_array.clear();
+			g_energy_array.clear();
+			g_marker = nullptr;
 			g_sim_time = 0.0;
 			max_time = 0.0f;
 		}
@@ -396,7 +405,26 @@ void render_simulation_settings() {
 	ImGui::End();
 }
 
+void render_plots() {
+	static bool once = true;
+	if (once) {
+		once = false;
+		ImGui::SetNextWindowSize(ImVec2(940, 350));
+	}
+	ImGui::SetNextWindowPos(ImVec2(370, 670));
+	ImGui::SetNextWindowBgAlpha(0.8f);
+	ImGui::Begin("Plots");
+
+	if (ImPlot::BeginPlot("Plot", ImVec2(920, 310), ImPlotFlags_NoTitle)) {
+		ImPlot::SetupAxes("t", "E", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
+		ImPlot::PlotLine("Energy(t)", g_t_array.data(), g_energy_array.data(), (int)g_t_array.size());
+		ImPlot::EndPlot();
+	}
+	ImGui::End();
+}
+
 void render_ui() {
 	render_side_bar();
 	render_simulation_settings();
+	render_plots();
 }

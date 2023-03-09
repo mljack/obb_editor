@@ -10,6 +10,7 @@ extern double g_sim_time;
 
 std::vector<Field*> g_fields;
 std::vector<Particle> g_particles;
+std::vector<float> g_t_array, g_energy_array;
 
 // pi => glm::pi()
 // angle() => glm::orientedAngle(), glm::angle()
@@ -72,8 +73,55 @@ void run_one_simulation_step(double timestep, int method_idx) {
 			p.vel += timestep * p.accel;
 			p.traj.emplace_back(g_sim_time, p.pos);
 		}
-	} else if (method_idx == 1) {	// Explicit Trapezoid
-		//printf("Explicit Trapezoid \n");
+	} else if (method_idx == 1) {	// Backward Eular
+		//printf("Backward Eular \n");
+		compute_accel();
+		for (auto& p : g_particles) {
+			p.pos_predicted = p.pos + timestep * p.vel;
+			p.vel_predicted = p.vel + timestep * p.accel;
+		}
+		for (int i = 0; i < 10; ++i) {
+			for (auto& field : g_fields) {
+				for (auto& p : g_particles) {
+					p.accel_predicted = field->compute_accel(p.pos_predicted);
+				}
+			}
+			for (auto& p : g_particles) {
+				p.pos_predicted = p.pos + timestep * p.vel_predicted;
+				p.vel_predicted = p.vel + timestep * p.accel_predicted;
+			}
+		}
+		for (auto& p : g_particles) {
+			p.pos += timestep * p.vel_predicted;
+			p.vel += timestep * p.accel_predicted;
+			p.traj.emplace_back(g_sim_time, p.pos);
+		}
+	}
+	else if (method_idx == 2) {	// Implicit Trapezoid
+		//printf("Implicit Trapezoid \n");
+		compute_accel();
+		for (auto& p : g_particles) {
+			p.pos_predicted = p.pos + timestep * p.vel;
+			p.vel_predicted = p.vel + timestep * p.accel;
+		}
+		for (int i = 0; i < 10; ++i) {
+			for (auto& field : g_fields) {
+				for (auto& p : g_particles) {
+					p.accel_predicted = field->compute_accel(p.pos_predicted);
+				}
+			}
+			for (auto& p : g_particles) {
+				p.pos_predicted = p.pos + timestep * p.vel_predicted;
+				p.vel_predicted = p.vel + timestep * p.accel_predicted;
+			}
+		}
+		for (auto& p : g_particles) {
+			p.pos += timestep * 0.5 * (p.vel + p.vel_predicted);
+			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+			p.traj.emplace_back(g_sim_time, p.pos);
+		}
+	} else if (method_idx == 3) {	// Explicit Trapezoid
+	 //printf("Explicit Trapezoid \n");
 		compute_accel();
 		for (auto& p : g_particles) {
 			p.pos_predicted = p.pos + timestep * p.vel;
@@ -89,7 +137,7 @@ void run_one_simulation_step(double timestep, int method_idx) {
 			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
 			p.traj.emplace_back(g_sim_time, p.pos);
 		}
-	} else if (method_idx == 2) {	// Taylor (2nd order)
+	} else if (method_idx == 4) {	// Taylor (2nd order)
 		//printf("Taylor (2nd order) \n");
 		compute_accel();
 		for (auto& p : g_particles) {
@@ -97,7 +145,7 @@ void run_one_simulation_step(double timestep, int method_idx) {
 			p.vel += timestep * p.accel;
 			p.traj.emplace_back(g_sim_time, p.pos);
 		}
-	} else if (method_idx == 3) {	// Taylor (2nd order) + Explicit Trapezoid
+	} else if (method_idx == 5) {	// Taylor (2nd order) + Explicit Trapezoid
 		//printf("Taylor (2nd order) + Explicit Trapezoid \n");
 		compute_accel();
 		for (auto& p : g_particles) {
@@ -114,9 +162,31 @@ void run_one_simulation_step(double timestep, int method_idx) {
 			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
 			p.traj.emplace_back(g_sim_time, p.pos);
 		}
+	} else if (method_idx == 6) {	// Velocity Verlet
+		//printf("Velocity Verlet \n");
+		compute_accel();
+		for (auto& p : g_particles) {
+			p.pos += timestep * (p.vel + 0.5 * timestep * p.accel);
+			//p.vel_predicted = p.vel + timestep * p.accel;
+		}
+		for (auto& field : g_fields) {
+			for (auto& p : g_particles) {
+				p.accel_predicted = field->compute_accel(p.pos);
+			}
+		}
+		for (auto& p : g_particles) {
+			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+			p.traj.emplace_back(g_sim_time, p.pos);
+		}
 	}
 
+	double E = 0.0;
+	for (auto& p : g_particles) {
+		E += 0.5 * glm::dot(p.vel, p.vel);
+	}
 	g_sim_time += timestep;
+	g_t_array.push_back(g_sim_time);
+	g_energy_array.push_back(E);
 }
 
 void stop_simulation(std::map<int, Marker>* markers) {
