@@ -145,6 +145,40 @@ double dF(double x1, double y1, double x2, double y2, double theta) {
 	return d;
 }
 
+double sin_t(double x1, double y1, double x2, double y2, double c, double s) {
+	double t1 = -x1 * s + y1 * c;
+	double t2 = x2 * c + y2 * s;
+	double t3 = x1 * c + y1 * s;
+	double t4 = -x2 * s + y2 * c;
+	return (t1 * t2 * t2 / t3 / t3 + y2 * c) / x2;
+}
+
+double cos_t(double x1, double y1, double x2, double y2, double c, double s) {
+	double t1 = -x1 * s + y1 * c;
+	double t2 = x2 * c + y2 * s;
+	double t3 = x1 * c + y1 * s;
+	double t4 = -x2 * s + y2 * c;
+	return -(t1 * t2 * t2 / t3 / t3 + x2 * s) / y2;
+}
+
+double f3(double x1, double y1, double x2, double y2, double c, double s) {
+	double t1 = -x1 * s + y1 * c;
+	double t2 = x2 * c + y2 * s;
+	double t3 = x1 * c + y1 * s;
+	double t4 = -x2 * s + y2 * c;
+	return t1 * t2 * t2 - t4 * t3 * t3;
+}
+
+double f4(double x1, double y1, double x2, double y2, double t) {
+	double c = std::cos(t);
+	double s = std::sin(t);
+	double t1 = -x1 * s + y1 * c;
+	double t2 = x2 * c + y2 * s;
+	double t3 = x1 * c + y1 * s;
+	double t4 = -x2 * s + y2 * c;
+	return t1 * t2 * t2 - t4 * t3 * t3;
+}
+
 bool is_a_solution(double x1, double y1, double x2, double y2, double theta, double* A = nullptr, double* residual = nullptr) {
 	double a = compute_trial_a(x1, y1, theta);
 	double r = f2(x2, y2, a, theta);
@@ -173,14 +207,90 @@ void compute_other_roots_for_equ3(std::vector<double>* roots, double k1, double 
 		roots->emplace_back((-b-sqrt(d))/(2*a));
 	} else if (d > -1e-6) {
 		roots->emplace_back(-b/(2*a));
-	} 
+	}
+}
+
+double solve_with_bisect(double x1, double y1, double x2, double y2, double t_low, double t_high) {
+	double residual = 1.0, a;
+
+	a = compute_trial_a(x1, y1, t_low);
+	double low_residual = f2(x2, y2, a, t_low);
+	a = compute_trial_a(x1, y1, t_high);
+	double high_residual = f2(x2, y2, a, t_high);
+	// printf("residual: %lf, t: %lf\n", high_residual, glm::degrees(t_low));
+	// printf("residual: %lf, t: %lf\n", low_residual, glm::degrees(t_high));
+
+	if (low_residual * high_residual > 0.0) {
+		printf("No root found...\n");
+		return -9999.0;
+	}
+
+	double t, r;
+	int count = 0;
+	do {
+		t = (t_low + t_high) / 2;
+		a = compute_trial_a(x1, y1, t);
+		residual = f2(x2, y2, a, t);
+		//printf("residual: %lf, t: %lf, range[%lf, %lf]\n", residual, glm::degrees(t), glm::degrees(t_low), glm::degrees(t_high));
+		if (residual * high_residual <= 0.0) {
+			t_low = t;
+			low_residual = residual;
+		} 
+		else {
+			t_high = t;
+			high_residual = residual;
+		}
+		r = f4(x1, y1, x2, y2, t);
+		++count;
+	} while (std::abs(r) >= 1e-6 && count < 100000);
+	printf("num of bisect(): %d, residual: %e\n", count, r);
+	return t;
+}
+
+double solve_with_secant(double x1, double y1, double x2, double y2, double t_low, double t_high) {
+	double residual = 1.0, a;
+
+	double low_residual = f4(x1, y1, x2, y2, t_low);
+	double high_residual = f4(x1, y1, x2, y2, t_high);
+	// printf("residual: %lf, t: %lf\n", high_residual, glm::degrees(t_low));
+	// printf("residual: %lf, t: %lf\n", low_residual, glm::degrees(t_high));
+
+	if (low_residual * high_residual > 0.0) {
+		printf("No root found...\n");
+		return -9999.0;
+	}
+
+	double r;
+	double alpha = std::abs(low_residual) / (std::abs(low_residual) + std::abs(high_residual));
+	double t = alpha * t_high + (1 - alpha) * t_low;
+	int count = 0;
+	do {
+		residual = f4(x1, y1, x2, y2, t);
+		//printf("residual: %.11lf, t: %lf, range[%lf, %lf]\n", residual, glm::degrees(t), glm::degrees(t_low), glm::degrees(t_high));
+		if (residual * high_residual <= 0.0) {
+			t_low = t;
+			low_residual = residual;
+		}
+		else {
+			t_high = t;
+			high_residual = residual;
+		}
+		alpha = std::abs(low_residual) / (std::abs(low_residual) + std::abs(high_residual));
+		t = alpha * t_high + (1 - alpha) * t_low;
+		r = f4(x1, y1, x2, y2, t);
+		count++;
+	} while (std::abs(r) >= 1e-6 && count <= 100000);
+
+	printf("num of secant(): %d, residual: %e\n", count, r);
+	return t;
 }
 
 double solve_with_newton_method(double x1, double y1, double x2, double y2, double t_low, double t_high) {
 	double t = (t_low + t_high) / 2;
 	double f = F(x1, y1, x2, y2, t);
 	int count = 0;
-	for (; std::abs(f) >= 1e-10 && count <= 100000 ; count++) {
+	double r;
+	do {
 		//printf("num of newton(): %d, t: %.10f, residual: %e\n", count, t, f);
 		double df = dF(x1, y1, x2, y2, t);
 		//double f2 = F(x1, y1, x2, y2, t+0.0001);
@@ -190,9 +300,44 @@ double solve_with_newton_method(double x1, double y1, double x2, double y2, doub
 		//printf("dF:  %.10f\n", df);
 		//printf("dF2: %.10f\n\n", df2);
 		f = F(x1, y1, x2, y2, t);
-	}
-	printf("num of newton(): %d, residual: %e\n", count, f);
+		r = f4(x1, y1, x2, y2, t);
+		count++;
+	} while (std::abs(r) >= 1e-6 && count <= 100000);
+	printf("num of newton(): %d, residual: %e\n", count, r);
 	return t;
+}
+
+double solve_with_fixed_point_theorem(double x1, double y1, double x2, double y2, double t_low, double t_high) {
+	double t = (t_low + t_high) / 2;
+	double tt = t;
+	double c = std::cos(t);
+	double s = std::sin(t);
+	double r = f3(x1, y1, x2, y2, c, s);
+  double rr;
+	//printf("num of fixed_point(): %d, residual: %e\n", -1, r);
+	int count = 0;
+	do {
+		t = tt;
+		double ff = f3(x1, y1, x2, y2, c, s);
+		s = s - 0.0000001 * ff;
+		double r1 = f3(x1, y1, x2, y2, sqrt(1 - s * s), s);
+		double r2 = f3(x1, y1, x2, y2, -sqrt(1 - s * s), s);
+		if (std::abs(r1) < std::abs(r2)) {
+			c = sqrt(1 - s * s);
+			r = r1;
+		}
+		else {
+			c = -sqrt(1 - s * s);
+			r = r2;
+		}
+
+		count++;
+		tt = std::atan2(s, c);
+		rr = f4(x1, y1, x2, y2, tt);
+		//printf("num of fixed_point(): %d, c: %f, t: %f, residual: %e\n", count, c, tt, rr);
+	} while (std::abs(rr) >= 1e-6 && count <= 100000);
+	printf("num of fixed_point(): %d, residual: %e\n", count, r);
+	return tt;
 }
 
 void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vector<double>* theta_array) {
@@ -227,54 +372,21 @@ void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vecto
 	if (t_high < t_low)
 		std::swap(t_low, t_high);
 	
-	double t = (t_low + t_high) / 2;
-	double t_low3 = t_low;
-	double t_high3 = t_high;
-
+	double t, a;
 	// printf("v1: [%lf, %lf]\n", x1, y1);
 	// printf("v2: [%lf, %lf]\n", x2, y2);
 	// printf("t range[%lf, %lf]\n", glm::degrees(t_low), glm::degrees(t_high));
 
-	double residual = 1.0, a;
-
-	a = compute_trial_a(x1, y1, t_low);
-	double high_residual = f2(x2, y2, a, t_low);
-	a = compute_trial_a(x1, y1, t_high);
-	double low_residual = f2(x2, y2, a, t_high);
-	// printf("residual: %lf, t: %lf\n", high_residual, glm::degrees(t_low));
-	// printf("residual: %lf, t: %lf\n", low_residual, glm::degrees(t_high));
-
-	if (low_residual * high_residual > 0.0) {
-		printf("No root found...\n");
-		return;
-	}
-
-#if 1
-	t = solve_with_newton_method(x1, y1, x2, y2, t_low3, t_high3);
-	a = compute_trial_a(x1, y1, t);
-#else
-	int count;
-	for (count = 0; std::abs(residual) >= 1e-10; ++count) {
-		t = (t_low + t_high) / 2;
-		a = compute_trial_a(x1, y1, t);
-		residual = f2(x2, y2, a, t);
-		if (count > 100000) {
-			printf("max iteration reached.\n");
-			break;
-		}
-		// printf("residual: %lf, t: %lf, range[%lf, %lf]\n", residual, glm::degrees(t), glm::degrees(t_low), glm::degrees(t_high));
-		if (residual * high_residual <= 0.0)
-			t_high = t;
-		else
-			t_low = t;
-	}
-	printf("num of bisect(): %d\n", count);
-#endif
+	t = solve_with_bisect(x1, y1, x2, y2, t_low, t_high);
+	t = solve_with_secant(x1, y1, x2, y2, t_low, t_high);
+	t = solve_with_newton_method(x1, y1, x2, y2, t_low, t_high);
+	t = solve_with_fixed_point_theorem(x1, y1, x2, y2, t_low, t_high);
 
 	double theta1 = t;
-	double a1 = a;
+	double a1 = compute_trial_a(x1, y1, t);
 	double c = std::cos(theta1);
 	// double s = std::sin(theta1);
+	double residual = f2(x2, y2, a1, theta1);
 	double root1 = c*c;
 	A_array->emplace_back(a1);
 	theta_array->emplace_back(theta1);
