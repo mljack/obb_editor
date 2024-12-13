@@ -125,6 +125,26 @@ double f2(double x, double y, double A, double theta) {
 	return A*xx*xx - yy;
 }
 
+double F(double x1, double y1, double x2, double y2, double theta) {
+	double a = compute_trial_a(x1, y1, theta);
+	return f2(x2, y2, a, theta);
+}
+
+double dF(double x1, double y1, double x2, double y2, double theta) {
+	double d = 0.0;
+	double c = std::cos(theta);
+	double s = std::sin(theta);
+	double t1 = -x1 * s + y1 * c;
+	double t2 = x2 * c + y2 * s;
+	double t3 = x1 * c + y1 * s;
+	double t4 = -x2 * s + y2 * c;
+
+	d += t2;
+	d += t1 * t2 * t2 * (-2) / t3 / t3 / t3 * t1;
+	d += (-t3 * t2 *t2 + t1 * 2 * t2 * t4) / t3 / t3;
+	return d;
+}
+
 bool is_a_solution(double x1, double y1, double x2, double y2, double theta, double* A = nullptr, double* residual = nullptr) {
 	double a = compute_trial_a(x1, y1, theta);
 	double r = f2(x2, y2, a, theta);
@@ -154,6 +174,25 @@ void compute_other_roots_for_equ3(std::vector<double>* roots, double k1, double 
 	} else if (d > -1e-6) {
 		roots->emplace_back(-b/(2*a));
 	} 
+}
+
+double solve_with_newton_method(double x1, double y1, double x2, double y2, double t_low, double t_high) {
+	double t = (t_low + t_high) / 2;
+	double f = F(x1, y1, x2, y2, t);
+	int count = 0;
+	for (; std::abs(f) >= 1e-10 && count <= 100000 ; count++) {
+		//printf("num of newton(): %d, t: %.10f, residual: %e\n", count, t, f);
+		double df = dF(x1, y1, x2, y2, t);
+		//double f2 = F(x1, y1, x2, y2, t+0.0001);
+		//double df2 = (f2 - f) / 0.0001;
+		t -= f / df;
+		//t -= f / df2;
+		//printf("dF:  %.10f\n", df);
+		//printf("dF2: %.10f\n\n", df2);
+		f = F(x1, y1, x2, y2, t);
+	}
+	printf("num of newton(): %d, residual: %e\n", count, f);
+	return t;
 }
 
 void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vector<double>* theta_array) {
@@ -189,6 +228,8 @@ void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vecto
 		std::swap(t_low, t_high);
 	
 	double t = (t_low + t_high) / 2;
+	double t_low3 = t_low;
+	double t_high3 = t_high;
 
 	// printf("v1: [%lf, %lf]\n", x1, y1);
 	// printf("v2: [%lf, %lf]\n", x2, y2);
@@ -208,7 +249,12 @@ void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vecto
 		return;
 	}
 
-	for (int count = 0; std::abs(residual) >= 1e-10; ++count) {
+#if 1
+	t = solve_with_newton_method(x1, y1, x2, y2, t_low3, t_high3);
+	a = compute_trial_a(x1, y1, t);
+#else
+	int count;
+	for (count = 0; std::abs(residual) >= 1e-10; ++count) {
 		t = (t_low + t_high) / 2;
 		a = compute_trial_a(x1, y1, t);
 		residual = f2(x2, y2, a, t);
@@ -221,7 +267,9 @@ void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vecto
 			t_high = t;
 		else
 			t_low = t;
-	} 
+	}
+	printf("num of bisect(): %d\n", count);
+#endif
 
 	double theta1 = t;
 	double a1 = a;
