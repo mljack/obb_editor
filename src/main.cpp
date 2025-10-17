@@ -375,6 +375,19 @@ void handle_mouse_down_event(const SDL_Event& e) {
 		g_drag_y = e.button.y * g_device_pixel_ratio;
 		g_image_dragging = true;
 	} else if (e.button.button == SDL_BUTTON_RIGHT) {
+    //static int cc = 0;
+    //cc++;
+    //if (cc == 1) {
+    //  g_image_x = 10;
+    //  g_image_y = 100;
+    //} else if (cc == 1) {
+    //  g_image_x = -8.289699217248176;
+    //  g_image_y = 77.77727059663617;
+    //} else if (cc == 2) {
+    //  g_image_x = 0;
+    //  g_image_y = 0;
+    //}
+
 		g_marker_drag_x = g_image_x;
 		g_marker_drag_y = g_image_y;
 		SDL_Keymod mod = SDL_GetModState();

@@ -259,7 +259,7 @@ void render_side_bar() {
 	}
 	ImGui::PopItemWidth();
 	ImGui::BeginChild("##file_list", ImVec2(330, 670), true, ImGuiWindowFlags_HorizontalScrollbar);
-	if (g_rescan_files) {
+	if (g_rescan_files && 0) {
 		std::string base_path = std::string() + folder_path;
 		if (std::filesystem::is_directory(base_path)) {
 			new_filelist();
@@ -296,7 +296,7 @@ void render_simulation_settings() {
 		once = false;
 		ImGui::SetNextWindowSize(ImVec2(350, 1010));
 	}
-	ImGui::SetNextWindowPos(ImVec2(1320, 10));
+	ImGui::SetNextWindowPos(ImVec2(720, 10));
 	ImGui::SetNextWindowBgAlpha(0.8f);
 	ImGui::Begin("Simulation Settings");
 

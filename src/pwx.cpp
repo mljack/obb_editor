@@ -1,11 +1,15 @@
-#include <cstdio>
+﻿#include <cstdio>
+#include <complex>
 #include <cmath>
 #include <algorithm>
+#include <set>
 #include <glm/vec2.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
 #include "pwx.h"
+
+#define M_PI 3.141592653589793
 
 namespace {
 	double pi = glm::pi<double>();
@@ -44,6 +48,248 @@ double root(double x1, double x2) {
 	return x;
 }
 
+// 求解三次方程 x^3 + k1*x^2 + k2*x + k3 = 0 的实根
+void solve3_a(std::vector<double>* rr, double k1, double k2, double k3) {
+  using namespace std;
+  typedef complex<double> cplx;
+
+  vector<double> roots;
+
+  // 降阶：x = y - k1/3
+  double a_over_3 = k1 / 3.0;
+  double p = k2 - k1 * a_over_3;
+  double q = 2.0 * a_over_3 * a_over_3 * a_over_3 - a_over_3 * k2 + k3;
+
+  // 判别式
+  cplx discriminant = cplx(q*q / 4.0 + p * p*p / 27.0, 0.0);
+
+  // 统一使用复数计算
+  cplx sqrt_disc = sqrt(discriminant);
+
+  // 三次方程立方根的三条主支公式
+  const cplx omega1(-0.5, sqrt(3) / 2.0);  // ω = e^(2πi/3)
+  const cplx omega2(-0.5, -sqrt(3) / 2.0);
+
+  cplx u = pow(cplx(-q / 2.0, 0.0) + sqrt_disc, 1.0 / 3.0);
+  cplx v = pow(cplx(-q / 2.0, 0.0) - sqrt_disc, 1.0 / 3.0);
+
+  // 三个根
+  cplx y1 = u + v;
+  cplx y2 = u * omega1 + v * omega2;
+  cplx y3 = u * omega2 + v * omega1;
+
+  // 转回原方程 x = y - a/3
+  cplx yy[3] = { y1 - a_over_3, y2 - a_over_3, y3 - a_over_3 };
+
+  printf("[%lf + %lf*i]\n", yy[0].real(), yy[0].imag());
+  printf("[%lf + %lf*i]\n", yy[1].real(), yy[1].imag());
+  printf("[%lf + %lf*i]\n", yy[2].real(), yy[2].imag());
+
+  // 忽略虚部很小的
+  for (int i = 0; i < 3; i++) {
+    if (abs(yy[i].imag()) < 1e-6)
+      rr->push_back(yy[i].real());
+  }
+
+}
+
+
+// 求解一元三次方程 x³ + k1x² + k2x + k3 = 0 的所有根
+// 返回值：包含三个复数根的vector
+double solve3_b(double k1, double k2, double k3) {
+  using namespace std::complex_literals; // 启用复数字面量（如1i）
+  std::vector<std::complex<double>> roots(3);
+
+  // 步骤1：变量代换消去二次项，化为 y³ + p*y + q = 0
+  double p = k2 - (k1 * k1) / 3.0;
+  double q = (2.0 * k1 * k1 * k1) / 27.0 - (k1 * k2) / 3.0 + k3;
+
+  // 步骤2：计算判别式相关参数
+  std::complex<double> delta = (q / 2.0) * (q / 2.0) + (p / 3.0) * (p / 3.0) * (p / 3.0);
+  std::complex<double> sqrt_delta = std::sqrt(delta);
+  std::complex<double> C1 = -q / 2.0 + sqrt_delta;
+  std::complex<double> C2 = -q / 2.0 - sqrt_delta;
+
+  // 步骤3：计算三次方根（使用复平面三次方根，确保覆盖所有分支）
+  std::complex<double> u = std::pow(C1, 1.0 / 3.0);
+  std::complex<double> v = std::pow(C2, 1.0 / 3.0);
+
+  // 三次单位根（除1外的两个）
+  const std::complex<double> omega = (-1.0 + std::sqrt(3.0) * 1i) / 2.0;
+  const std::complex<double> omega2 = (-1.0 - std::sqrt(3.0) * 1i) / 2.0;
+
+  // 步骤4：计算y的三个根
+  std::complex<double> y1 = u + v;
+  std::complex<double> y2 = u * omega + v * omega2;
+  std::complex<double> y3 = u * omega2 + v * omega;
+
+  // 步骤5：转换回x的根（x = y - k1/3）
+  std::complex<double> shift = -k1 / 3.0;
+  roots[0] = y1 + shift;
+  roots[1] = y2 + shift;
+  roots[2] = y3 + shift;
+
+  printf("[%lf + %lf*i]\n", roots[0].real(), roots[0].imag());
+  printf("[%lf + %lf*i]\n", roots[1].real(), roots[1].imag());
+  printf("[%lf + %lf*i]\n", roots[2].real(), roots[2].imag());
+
+  return roots[0].real();
+}
+
+// 安全的复数三次方根（处理实部为正/负的情况）
+std::complex<double> cube_root(std::complex<double> z) {
+  if (std::abs(z.imag()) < 1e-15) { // 实复数特殊处理
+    double re = z.real();
+    if (re >= 0) return std::complex<double>(std::pow(re, 1.0 / 3.0), 0.0);
+    else return std::complex<double>(-std::pow(-re, 1.0 / 3.0), 0.0);
+  }
+  return std::pow(z, 1.0 / 3.0);
+}
+
+// 求解一元三次方程 x³ + k1x² + k2x + k3 = 0 的所有根
+void solve3_c(std::vector<double>* rr, double k1, double k2, double k3) {
+
+  using namespace std::complex_literals;
+  std::vector<std::complex<double>> roots(3);
+
+  // 消去二次项：x = y - k1/3，化为 y³ + p*y + q = 0
+  double p = k2 - (k1 * k1) / 3.0;
+  double q = (2.0 * k1 * k1 * k1) / 27.0 - (k1 * k2) / 3.0 + k3;
+
+  // 判别式：Δ = (q/2)² + (p/3)³
+  double delta = (q * q) / 4.0 + (p * p * p) / 27.0;
+  std::complex<double> shift = -k1 / 3.0; // 转换回x的偏移量
+
+  if (delta >= 0) {
+    // 情况1：Δ ≥ 0（1个实根，2个共轭复根），用卡尔达诺公式
+    std::complex<double> sqrt_delta = std::sqrt(std::complex<double>(delta, 0.0));
+    std::complex<double> C1 = -q / 2.0 + sqrt_delta;
+    std::complex<double> C2 = -q / 2.0 - sqrt_delta;
+
+    std::complex<double> u = cube_root(C1);
+    std::complex<double> v = cube_root(C2);
+
+    // 强制满足 u*v = -p/3（修正分支错误）
+    if (std::abs(u * v + p / 3.0) > 1e-10) {
+      v = -p / (3.0 * u);
+    }
+
+    const std::complex<double> omega = (-1.0 + std::sqrt(3.0) * 1i) / 2.0;
+    const std::complex<double> omega2 = (-1.0 - std::sqrt(3.0) * 1i) / 2.0;
+
+    roots[0] = u + v + shift;
+    roots[1] = u * omega + v * omega2 + shift;
+    roots[2] = u * omega2 + v * omega + shift;
+  }
+  else {
+    // 情况2：Δ < 0（3个实根），用三角函数解法（避免复数开方误差）
+    double r = std::sqrt(std::pow(-p / 3.0, 3.0)); // 半径
+    double phi = std::acos(-q / (2.0 * r));       // 角度
+    double sqrt_p_over_3 = std::sqrt(-p / 3.0);     // 辅助变量
+
+    // 三个实根（用三角函数公式）
+    roots[0] = std::complex<double>(2 * sqrt_p_over_3 * std::cos(phi / 3.0), 0.0) + shift;
+    roots[1] = std::complex<double>(2 * sqrt_p_over_3 * std::cos((phi + 2 * M_PI) / 3.0), 0.0) + shift;
+    roots[2] = std::complex<double>(2 * sqrt_p_over_3 * std::cos((phi - 2 * M_PI) / 3.0), 0.0) + shift;
+  }
+
+  // 清理微小虚部（数值误差）
+  auto clean = [](std::complex<double> c) {
+    if (std::abs(c.imag()) < 1e-10) {
+      return std::complex<double>(c.real(), 0.0);
+    }
+    return c;
+  };
+  for (auto& root : roots) root = clean(root);
+
+  printf("[%lf + %lf*i]\n", roots[0].real(), roots[0].imag());
+  printf("[%lf + %lf*i]\n", roots[1].real(), roots[1].imag());
+  printf("[%lf + %lf*i]\n", roots[2].real(), roots[2].imag());
+
+  for (int i = 0; i < 3; i++) {
+    if (abs(roots[i].imag()) < 1e-6)
+      rr->push_back(roots[i].real());
+  }
+}
+
+bool solve3(std::vector<double>* rr, double k1, double k2, double k3) {
+  bool ret = false;
+  using cplx = std::complex<double>;
+  const double PI = std::acos(-1.0);
+  const double EPS_IMAG = 1e-12;
+  rr->clear();
+
+  // 降阶: x = y - k1/3
+  double a_over_3 = k1 / 3.0;
+  double p = k2 - k1 * a_over_3;
+  double q = 2.0 * a_over_3 * a_over_3 * a_over_3 - a_over_3 * k2 + k3;
+
+  // Δ（可为正、零或负）
+  cplx Delta = cplx((q*q) / 4.0 + (p*p*p) / 27.0, 0.0);
+
+  // 复数 sqrt(Delta)
+  cplx sqrtD = std::sqrt(Delta);
+
+  // A 和 B
+  cplx A = cplx(-q / 2.0, 0.0) + sqrtD;
+  //cplx B = cplx(-q/2.0, 0.0) - sqrtD; // 不需要单独挙取立方根
+
+  // 取 A 的一个立方根 u0（使用主值）
+  cplx u0 = std::pow(A, 1.0 / 3.0);
+
+  //// 如果 u0 太接近 0（数值不稳定），可改为从 B 取根再反算 u0
+  //if (std::abs(u0) < 1e-16) {
+  //  cplx B = cplx(-q / 2.0, 0.0) - sqrtD;
+  //  cplx v0temp = std::pow(B, 1.0 / 3.0);
+  //  if (std::abs(v0temp) < 1e-16) {
+  //    // 极端退化情况，退回用简单方法（y=0的近似）
+  //    u0 = cplx(0.0, 0.0);
+  //  }
+  //  else {
+  //    u0 = cplx(-p / 3.0, 0.0) / v0temp;
+  //  }
+  //}
+
+  // 强制匹配 v0 使 u0 * v0 = -p/3
+  cplx v0 = cplx(-p / 3.0, 0.0) / u0;
+
+  // 三次单位根
+  cplx omega = std::polar(1.0, 2.0 * PI / 3.0);
+
+  static double last_roots[6];
+  static bool init = false;
+  // 收集实根（去重）
+  //std::set<long long> seen_hash; // 用哈希避免重复（按一定精度）
+  //const double HASH_SCALE = 1e12; // 用于哈希/去重（可调整）
+  for (int k = 0; k < 3; ++k) {
+    cplx uk = u0 * std::pow(omega, k);
+    cplx vk = v0 * std::pow(omega, -k);
+    cplx yk = uk + vk;
+    cplx xk = yk - a_over_3;
+
+    if (k == 0 && (!init || abs(last_roots[0] - xk.real()) > 1e-6 || abs(last_roots[1] - xk.imag()) > 1e-6)) {
+      last_roots[0] = xk.real();
+      last_roots[1] = xk.imag();
+      ret = true;
+    }
+    if (ret)
+      printf("### %lf + %lf*i\n", xk.real(), xk.imag());
+
+    if (std::abs(xk.imag()) < EPS_IMAG) {
+      double xr = xk.real();
+      //long long h = (long long)std::llround(xr * HASH_SCALE);
+      //if (seen_hash.find(h) == seen_hash.end()) {
+        //seen_hash.insert(h);
+        rr->push_back(xr);
+      //}
+    }
+  }
+  init = true;
+
+  // 排序输出（从小到大）
+  //std::sort(rr->begin(), rr->end());
+  return ret;
+}
 
 // ================================================================
 // Solution of the rotated parabola problem
@@ -243,7 +489,7 @@ double solve_with_bisect(double x1, double y1, double x2, double y2, double t_lo
 		r = f4(x1, y1, x2, y2, t);
 		++count;
 	} while (std::abs(r) >= 1e-6 && count < 100000);
-	printf("num of bisect(): %d, residual: %e\n", count, r);
+	printf("num of bisect(): %d, residual: %e, %f\n", count, r, t);
 	return t;
 }
 
@@ -281,7 +527,7 @@ double solve_with_secant(double x1, double y1, double x2, double y2, double t_lo
 		count++;
 	} while (std::abs(r) >= 1e-6 && count <= 100000);
 
-	printf("num of secant(): %d, residual: %e\n", count, r);
+	printf("num of secant(): %d, residual: %e, %f\n", count, r, t);
 	return t;
 }
 
@@ -303,7 +549,7 @@ double solve_with_newton_method(double x1, double y1, double x2, double y2, doub
 		r = f4(x1, y1, x2, y2, t);
 		count++;
 	} while (std::abs(r) >= 1e-6 && count <= 100000);
-	printf("num of newton(): %d, residual: %e\n", count, r);
+	printf("num of newton(): %d, residual: %e, %f\n", count, r, t);
 	return t;
 }
 
@@ -336,7 +582,7 @@ double solve_with_fixed_point_theorem(double x1, double y1, double x2, double y2
 		rr = f4(x1, y1, x2, y2, tt);
 		//printf("num of fixed_point(): %d, c: %f, t: %f, residual: %e\n", count, c, tt, rr);
 	} while (std::abs(rr) >= 1e-6 && count <= 100000);
-	printf("num of fixed_point(): %d, residual: %e\n", count, r);
+	printf("num of fixed_point(): %d, residual: %e, %f\n", count, r, tt);
 	return tt;
 }
 
@@ -380,7 +626,7 @@ void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vecto
 	t = solve_with_bisect(x1, y1, x2, y2, t_low, t_high);
 	t = solve_with_secant(x1, y1, x2, y2, t_low, t_high);
 	t = solve_with_newton_method(x1, y1, x2, y2, t_low, t_high);
-	t = solve_with_fixed_point_theorem(x1, y1, x2, y2, t_low, t_high);
+	//t = solve_with_fixed_point_theorem(x1, y1, x2, y2, t_low, t_high);
 
 	double theta1 = t;
 	double a1 = compute_trial_a(x1, y1, t);
@@ -420,9 +666,27 @@ void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vecto
 	printf("equation: c2^3 + %lf*c2^2 + %lf*c2 + %lf = 0\n", k1, k2, k3);
 	printf("equation: y=x^3 + (%lf)*x^2 + (%lf)*x + (%lf)\n", k1, k2, k3);
 
-	std::vector<double> roots;
+  std::vector<double> roots;
+#if 0
+  static double last_root;
+  bool ret = solve3(&roots, k1, k2, k3);
+  if (!roots.empty()) {
+    printf("root by solve3: %lf\n", roots[0]);
+    if (ret)
+      for (int i = 0; i < 3; ++i) {
+        if (abs(root1 - roots[i]) < 1e-4) {
+          printf("### %lf + 0.0*i\n", roots[i]);
+          last_root = roots[i];
+          break;
+        }
+      }
+  }
+  A_array->clear();
+  theta_array->clear();
+#else
 	compute_other_roots_for_equ3(&roots, k1, k2, k3, root1);
 	//std::sort(roots.begin(), roots.end());
+#endif
 
 	{
 		double c = std::cos(theta1);
