@@ -7,6 +7,7 @@
 
 
 extern double g_sim_time;
+extern bool g_simulating;
 
 std::vector<Field*> g_fields;
 std::vector<Particle> g_particles;
@@ -29,17 +30,18 @@ vec2d GravityOnEarth::compute_accel(const vec2d& pos) {
 }
 
 double GravityOnEarth::compute_potential(const vec2d& pos) {
-	return 0;
+	return 9.8 * (pos.y - 0.0);
 }
 
 vec2d GravityInSpace::compute_accel(const vec2d& pos) {
-	vec2d v = center - pos;
-	double r2 = glm::dot(v, v);
-	return 200*30*30/(r2*std::sqrt(r2))*v;
+	vec2d r = center - pos;
+	double r2 = glm::dot(r, r);
+	return 200*30*30/(r2*std::sqrt(r2))*r;
 }
 
 double GravityInSpace::compute_potential(const vec2d& pos) {
-	return 0;
+	double r = glm::length(center - pos);
+	return -200 * 30 * 30 / r;
 }
 
 void start_simulation(std::map<int, Marker>& markers) {
@@ -53,6 +55,16 @@ void start_simulation(std::map<int, Marker>& markers) {
 	int count = 0;
 	for (auto&[idx, m] : markers) {
 		g_particles[count++].set(g_sim_time, idx, 1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
+	}
+
+	if (!g_particles.empty()) {
+		Particle solution = g_particles[0];
+		solution.traj.clear();
+		solution.set_solution([](double t, vec2d* pos, vec2d* vel, vec2d* accel) {
+			double r = 100.0;
+			*pos = vec2d(800.0, -600.0) + r * vec2d(std::cos(t), std::sin(t));
+		});
+		g_particles.push_back(solution);
 	}
 }
 
@@ -182,11 +194,22 @@ void run_one_simulation_step(double timestep, int method_idx) {
 
 	double E = 0.0;
 	for (auto& p : g_particles) {
-		E += 0.5 * glm::dot(p.vel, p.vel);
+		if (p.solution) {
+			p.solution(g_sim_time + timestep, &p.pos, &p.vel, &p.accel);
+		} else {
+			E += 0.5 * glm::dot(p.vel, p.vel);
+			for (auto& field : g_fields) {
+				E += field->compute_potential(p.pos);
+			}
+		}
 	}
-	g_sim_time += timestep;
-	g_t_array.push_back(g_sim_time);
-	g_energy_array.push_back(E);
+	if (isnan(E)) {
+		g_simulating = false;
+	} else {
+		g_sim_time += timestep;
+		g_t_array.push_back(g_sim_time);
+		g_energy_array.push_back(E);
+	}
 }
 
 void stop_simulation(std::map<int, Marker>* markers) {

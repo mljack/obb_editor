@@ -2,6 +2,7 @@
 
 #include <map>
 #include <vector>
+#include <functional>
 
 #include <glm/vec2.hpp>
 using vec2d = glm::dvec2;
@@ -23,6 +24,9 @@ struct Particle {
 		vel = vel1; accel = accel1;
 		traj.emplace_back(t, pos);
 	}
+	void set_solution(std::function<void(double, vec2d*, vec2d*, vec2d*)> s) {
+		solution = s;
+	}
 	int id;
 	double mass;
 	vec2d pos;
@@ -32,6 +36,7 @@ struct Particle {
 	vec2d vel_predicted;
 	vec2d accel_predicted;
 	std::vector<TrajPt> traj;
+	std::function<void(double, vec2d*, vec2d*, vec2d*)> solution = nullptr;
 };
 
 class Field {
