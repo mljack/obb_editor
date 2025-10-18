@@ -212,6 +212,11 @@ void solve3_c(std::vector<double>* rr, double k1, double k2, double k3) {
   }
 }
 
+double sign(double x) {
+  if (x < 0) return -1.0;
+  return 1.0;
+}
+
 bool solve3(std::vector<double>* rr, double k1, double k2, double k3) {
   bool ret = false;
   using cplx = std::complex<double>;
@@ -225,10 +230,13 @@ bool solve3(std::vector<double>* rr, double k1, double k2, double k3) {
   double q = 2.0 * a_over_3 * a_over_3 * a_over_3 - a_over_3 * k2 + k3;
 
   // Δ（可为正、零或负）
-  cplx Delta = cplx((q*q) / 4.0 + (p*p*p) / 27.0, 0.0);
+  double delta_real = (q*q) / 4.0 + (p*p*p) / 27.0;
+  cplx Delta = cplx(delta_real, 0.0);
 
   // 复数 sqrt(Delta)
   cplx sqrtD = std::sqrt(Delta);
+  //if (delta_real < 0.0)
+  //  Delta = -Delta;
 
   // A 和 B
   cplx A = cplx(-q / 2.0, 0.0) + sqrtD;
@@ -236,6 +244,9 @@ bool solve3(std::vector<double>* rr, double k1, double k2, double k3) {
 
   // 取 A 的一个立方根 u0（使用主值）
   cplx u0 = std::pow(A, 1.0 / 3.0);
+  if (delta_real >= 0) {
+    u0 = cplx(sign(A.real()) * std::pow(std::abs(A.real()), 1.0 / 3.0), 0.0);
+  }
 
   //// 如果 u0 太接近 0（数值不稳定），可改为从 B 取根再反算 u0
   //if (std::abs(u0) < 1e-16) {
@@ -668,6 +679,10 @@ void arc(const std::vector<double>& xy, std::vector<double>* A_array, std::vecto
 
   std::vector<double> roots;
 #if 0
+  printf("x1 = %lf\n", x1);
+  printf("y1 = %lf\n", y1);
+  printf("x2 = %lf\n", x2);
+  printf("y2 = %lf\n", y2);
   static double last_root;
   bool ret = solve3(&roots, k1, k2, k3);
   if (!roots.empty()) {

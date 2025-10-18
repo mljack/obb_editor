@@ -378,14 +378,14 @@ void handle_mouse_down_event(const SDL_Event& e) {
     //static int cc = 0;
     //cc++;
     //if (cc == 1) {
-    //  g_image_x = 10;
-    //  g_image_y = 100;
-    //} else if (cc == 1) {
-    //  g_image_x = -8.289699217248176;
-    //  g_image_y = 77.77727059663617;
+    //  g_image_x = -271.000000+300;
+    //  g_image_y = 397.000000+300;
     //} else if (cc == 2) {
-    //  g_image_x = 0;
-    //  g_image_y = 0;
+    //  g_image_x = -118.000000+300;
+    //  g_image_y = 117.000000+300;
+    //} else if (cc == 3) {
+    //  g_image_x = 300;
+    //  g_image_y = 300;
     //}
 
 		g_marker_drag_x = g_image_x;
