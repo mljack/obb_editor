@@ -296,12 +296,12 @@ void render_simulation_settings() {
 		once = false;
 		ImGui::SetNextWindowSize(ImVec2(350, 1010));
 	}
-	ImGui::SetNextWindowPos(ImVec2(720, 10));
+	ImGui::SetNextWindowPos(ImVec2(1320, 10));
 	ImGui::SetNextWindowBgAlpha(0.8f);
 	ImGui::Begin("Simulation Settings");
 
-	static int problem_idx = 1;
-	static const char* problems[] = { "Rotated Parabola", "One-Body", "Two-Body", "Three-Body", "N-Body" };
+	static int problem_idx = 2;
+	static const char* problems[] = { "Rotated Parabola", "Planet Orbit", "Badminton Clear Shot", "Three-Body", "N-Body" };
 	render_combo("Problem", problems, IM_ARRAYSIZE(problems), &problem_idx);
 	g_parabola_test = (problem_idx == 0);
 	if (g_parabola_test) {
@@ -333,11 +333,11 @@ void render_simulation_settings() {
 				stop_simulation(&g_markers);
 			}
 		} else {
-			if (ImGui::Button("Start") && !g_markers.empty()) {
+			if (ImGui::Button("Start")) {
 				if (sim_time_f < max_time)
 					seek_to_sim_time_moment(max_time, &g_markers);
 				g_simulating = true;
-				start_simulation(g_markers);
+				start_simulation(problem_idx, &g_markers);
 			}
 		}
 		ImGui::SameLine();

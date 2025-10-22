@@ -10,7 +10,7 @@ public:
 	float x = 0.0f;
 	float y = 0.0f;
 	float vx = 0.0f;
-	float vy = -30.0f;
+	float vy = 0.0f;
 	float ax = 0.0f;
 	float ay = 0.0f;
 	float length = 100.0f;
@@ -20,12 +20,13 @@ public:
 	float certainty = 1.0f;
 	bool enabled = true;
 	bool manually_created = false;
+	bool is_static = false;
 
 	bool operator==(const Marker& m) const {
 		return id == m.id && type == m.type && x == m.x && y == m.y &&
 			length == m.length && width == m.width && heading == m.heading &&
 			score == m.score && certainty == m.certainty && enabled == m.enabled &&
-			manually_created == m.manually_created;
+			manually_created == m.manually_created && is_static == m.is_static;
 	}
 };
 
