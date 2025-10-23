@@ -2,6 +2,7 @@
 
 #include <map>
 #include <vector>
+#include <set>
 #include <functional>
 
 #include <glm/vec2.hpp>
@@ -96,6 +97,9 @@ public:
 	void init(std::map<int, Marker>* markers) override;
 	void handle_boundary() override;
 	void handle_collision() override;
+private:
+	// Track pairs of particles that have collided to avoid multiple collisions
+	std::set<std::pair<int, int>> collision_pairs;
 };
 
 extern std::unique_ptr<Problem> g_problem;

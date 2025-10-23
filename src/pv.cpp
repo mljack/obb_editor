@@ -14,7 +14,6 @@
 #include <glm/glm.hpp>
 
 #include <random>
-#include <set>
 
 /**
  * @brief Global simulation variables
@@ -24,7 +23,7 @@ extern bool g_simulating;          ///< Whether simulation is running
 extern std::map<int, Marker> g_markers; ///< Markers for UI visualization
 extern bool g_show_trajectories;   ///< Whether to show particle trajectories
 std::vector<std::vector<vec2d>> g_env;  ///< Environment boundaries
-std::vector<Field*> g_fields;       ///< Force fields affecting particles
+std::vector<std::shared_ptr<Field>> g_fields;       ///< Force fields affecting particles
 std::vector<Particle> g_particles;  ///< Simulated particles
 std::vector<float> g_t_array, g_energy_array; ///< Energy tracking arrays
 
@@ -111,7 +110,8 @@ void start_simulation(int problem_idx, std::map<int, Marker>* markers) {
 		g_problem = nullptr;  // Invalid problem index
 
 	// Initialize the problem with markers
-	g_problem->init(markers);
+	if (g_problem)
+		g_problem->init(markers);
 
 	// Start tracking trajectories if enabled
 	if (g_show_trajectories) {
@@ -301,8 +301,10 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		}
 	}
 
-	g_problem->handle_collision();
-	g_problem->handle_boundary();
+	if (g_problem) {
+		g_problem->handle_collision();
+		g_problem->handle_boundary();
+	}
 
 	if (g_show_trajectories) {
 		for (auto& p : g_particles)
@@ -369,12 +371,13 @@ void seek_to_sim_time_moment(double t, std::map<int, Marker>* markers) {
 			if (traj_pt.t > t) {
 				m.x = traj_pt.pos.x;
 				m.y = traj_pt.pos.y;
+
+				// Update the simulation time
+				g_sim_time = t;
 				break;
 			}
 		}
 	}
-	// Update the simulation time
-	g_sim_time = t;
 }
 
 /**
@@ -389,7 +392,7 @@ void PlanetOrbit::init(std::map<int, Marker>* markers) {
 	// Clear existing force fields
 	g_fields.clear();
 	// Create a central gravitational field at (800, -600)
-	g_fields.push_back(new GravityInSpace(vec2d(800.0, -600.0)));
+	g_fields.push_back(std::make_shared<GravityInSpace>(vec2d(800.0, -600.0)));
 	
 	// Create a marker for the planet
 	Marker m1;
@@ -435,9 +438,9 @@ void BadmintonClearShot::init(std::map<int, Marker>* markers) {
 	// Clear existing force fields
 	g_fields.clear();
 	// Add Earth's gravity
-	g_fields.push_back(new GravityOnEarth);
+	g_fields.push_back(std::make_shared<GravityOnEarth>());
 	// Add air resistance
-	g_fields.push_back(new AirResistance);
+	g_fields.push_back(std::make_shared<AirResistance>());
 
 	// Create two markers for shuttlecocks with different initial velocities
 	Marker m1, m2;
@@ -481,7 +484,7 @@ void BadmintonClearShot::init(std::map<int, Marker>* markers) {
 void RarefiedGas::init(std::map<int, Marker>* markers) {
 	// Clear existing force fields (no gravity in this simulation)
 	g_fields.clear();
-	//g_fields.push_back(new GravityOnEarth);
+	//g_fields.push_back(std::make_shared<GravityOnEarth>());
 
 	// Define a rectangular container boundary
 	g_env.clear();
@@ -501,7 +504,6 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	markers->clear();
 	Marker m;
 	for (int i = 0; i < 1000; ++i) {
-		markers->emplace(i, m);
 		// Position within container (offset by container coordinates)
 		m.x = xy_dist(generator) + 600.0;
 		m.y = xy_dist(generator) - 1000.0;
@@ -549,8 +551,6 @@ void RarefiedGas::handle_collision() {
 	for (auto& p : g_particles)
 		p.is_colliding = false;
 
-	// Track pairs of particles that have collided to avoid multiple collisions
-	static std::set<std::pair<int, int>> collision_pairs;
 	// Check all pairs of particles for collisions
 	for (int i = 0; i < g_particles.size(); ++i) {
 		for (int j = i + 1; j < g_particles.size(); ++j) {
