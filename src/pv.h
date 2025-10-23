@@ -19,17 +19,15 @@ struct TrajPt {
 };
 struct Particle {
 	Particle() {}
-	void set(double t, int id1, bool is_static1, double mass1, const vec2d& pos1, const vec2d& vel1, const vec2d& accel1) {
-		id = id1; mass = mass1;  pos = pos1;
+	void set(double t, int id1, double radius1, double mass1, const vec2d& pos1, const vec2d& vel1, const vec2d& accel1) {
+		id = id1; radius = radius1;  mass = mass1;  pos = pos1;
 		vel = vel1; accel = accel1;
-		is_static = is_static1;
-		traj.emplace_back(t, pos);
 	}
 	void set_solution(std::function<void(double, vec2d*, vec2d*, vec2d*)> s) {
 		solution = s;
 	}
 	int id;
-	bool is_static;
+	double radius;
 	double mass;
 	vec2d pos;
 	vec2d vel;
@@ -37,6 +35,7 @@ struct Particle {
 	vec2d pos_predicted;
 	vec2d vel_predicted;
 	vec2d accel_predicted;
+	bool is_colliding = false;
 	std::vector<TrajPt> traj;
 	std::function<void(double, vec2d*, vec2d*, vec2d*)> solution = nullptr;
 };
@@ -70,12 +69,15 @@ public:
 };
 
 extern std::vector<Particle> g_particles;
+extern std::vector<std::vector<vec2d>> g_env;
 extern std::vector<float> g_t_array, g_energy_array;
 
 class Problem {
 public:
 	virtual ~Problem() {}
 	virtual void init(std::map<int, Marker>* markers) = 0;
+	virtual void handle_boundary() {};
+	virtual void handle_collision() {};
 	virtual void destory() {};
 };
 
@@ -87,6 +89,13 @@ public:
 class BadmintonClearShot : public Problem {
 public:
 	void init(std::map<int, Marker>* markers) override;
+};
+
+class RarefiedGas : public Problem {
+public:
+	void init(std::map<int, Marker>* markers) override;
+	void handle_boundary() override;
+	void handle_collision() override;
 };
 
 extern std::unique_ptr<Problem> g_problem;

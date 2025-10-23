@@ -27,6 +27,7 @@ extern bool g_parabola_test;
 extern bool g_show_box;
 extern bool g_show_cross;
 extern bool g_show_point;
+extern bool g_show_trajectories;
 extern bool g_simulating;
 extern bool g_replaying_sim;
 extern double g_sim_time;
@@ -300,8 +301,8 @@ void render_simulation_settings() {
 	ImGui::SetNextWindowBgAlpha(0.8f);
 	ImGui::Begin("Simulation Settings");
 
-	static int problem_idx = 2;
-	static const char* problems[] = { "Rotated Parabola", "Planet Orbit", "Badminton Clear Shot", "Three-Body", "N-Body" };
+	static int problem_idx = 3;
+	static const char* problems[] = { "Rotated Parabola", "Planet Orbit", "Badminton Clear Shot", "Rarefied Gas" };
 	render_combo("Problem", problems, IM_ARRAYSIZE(problems), &problem_idx);
 	g_parabola_test = (problem_idx == 0);
 	if (g_parabola_test) {
@@ -328,16 +329,22 @@ void render_simulation_settings() {
 		static float sim_time_f = 0.0f;
 		static float max_time = 0.0f;
 		if (g_simulating) {
-			if (ImGui::Button("Stop")) {
+			if (ImGui::Button("Pause")) {
 				g_simulating = false;
-				stop_simulation(&g_markers);
+				//stop_simulation(&g_markers);
 			}
 		} else {
-			if (ImGui::Button("Start")) {
-				if (sim_time_f < max_time)
-					seek_to_sim_time_moment(max_time, &g_markers);
-				g_simulating = true;
-				start_simulation(problem_idx, &g_markers);
+			if (g_problem) {
+				if (ImGui::Button("Resume")) {
+					g_simulating = true;
+				}
+			} else {
+				if (ImGui::Button("Start")) {
+					if (sim_time_f < max_time)
+						seek_to_sim_time_moment(max_time, &g_markers);
+					g_simulating = true;
+					start_simulation(problem_idx, &g_markers);
+				}
 			}
 		}
 		ImGui::SameLine();
@@ -368,10 +375,13 @@ void render_simulation_settings() {
 			g_energy_array.clear();
 			g_markers.clear();
 			g_marker = nullptr;
-			Marker m;
-			m.x = 700.0;
-			m.y = -600.0;
-			g_markers.emplace(0, m);
+			g_env.clear();
+			g_problem = nullptr;
+		}
+		ImGui::Checkbox("Show Trajectories", &g_show_trajectories);
+		if (!g_show_trajectories) {
+			for (auto& p : g_particles)
+				p.traj.clear();
 		}
 		if (ImGui::Button("Clear Trajectories")) {
 			g_simulating = false;

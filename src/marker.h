@@ -20,13 +20,12 @@ public:
 	float certainty = 1.0f;
 	bool enabled = true;
 	bool manually_created = false;
-	bool is_static = false;
 
 	bool operator==(const Marker& m) const {
 		return id == m.id && type == m.type && x == m.x && y == m.y &&
 			length == m.length && width == m.width && heading == m.heading &&
 			score == m.score && certainty == m.certainty && enabled == m.enabled &&
-			manually_created == m.manually_created && is_static == m.is_static;
+			manually_created == m.manually_created;
 	}
 };
 

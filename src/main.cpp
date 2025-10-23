@@ -137,8 +137,9 @@ bool g_parabola_test = true;
 bool g_show_box = true;
 bool g_show_cross = true;
 bool g_show_point = true;
+bool g_show_trajectories = false;
 double g_sim_timestep = 0.1;
-int g_sim_substeps = 10;
+int g_sim_substeps = 1;
 double g_sim_time = 0.0;
 bool g_simulating = false;
 bool g_replaying_sim = false;
@@ -787,37 +788,83 @@ void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfl
 void build_particles_buffer(const std::vector<Particle>& particles, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
 	std::vector<GLfloat>* v_buf2, std::vector<GLuint>* idx_buf2, std::vector<GLfloat>* v_buf3, std::vector<GLuint>* idx_buf3) {
 	glm::vec3 c = red;
-	float scale = 20.0f;
 	float z = 10.0f;
 	for (auto& p : particles) {
-		if (g_simulating) {
-			std::array<glm::vec2, 4> pts = {
-				p.pos - glm::dvec2(scale / 4, 0.0f),
-				p.pos - glm::dvec2(0.0f, scale / 4),
-				p.pos + glm::dvec2(scale / 4, 0.0f),
-				p.pos + glm::dvec2(0.0f, scale / 4),
-			};
-			GLuint base_idx = (GLuint)v_buf->size() / 7;
-			for (auto& pt : pts) {
+		std::array<glm::vec2, 4> pts = {
+			p.pos - glm::dvec2(p.radius, 0.0f),
+			p.pos - glm::dvec2(0.0f, p.radius),
+			p.pos + glm::dvec2(p.radius, 0.0f),
+			p.pos + glm::dvec2(0.0f, p.radius),
+		};
+		GLuint base_idx = (GLuint)v_buf->size() / 7;
+		for (auto& pt : pts) {
+			v_buf->push_back(pt.x);
+			v_buf->push_back(g_image_height - pt.y);
+			v_buf->push_back(z);
+			if (p.is_colliding) {
+				v_buf->push_back(green.x); v_buf->push_back(green.y); v_buf->push_back(green.z); v_buf->push_back(1.0f);
+			} else {
+				v_buf->push_back(red.x); v_buf->push_back(red.y); v_buf->push_back(red.z); v_buf->push_back(1.0f);
+			}
+		}
+		idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
+		idx_buf->push_back(base_idx + 1); idx_buf->push_back(base_idx + 2);
+		idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
+		idx_buf->push_back(base_idx + 3); idx_buf->push_back(base_idx + 0);
+
+		if (g_show_trajectories) {
+			GLuint base_idx2 = (GLuint)v_buf->size() / 7;
+			for (size_t i = 0; i < p.traj.size(); ++i) {
+				auto& pt = p.traj[i].pos;
+				v_buf->push_back(pt.x);
+				v_buf->push_back(g_image_height - pt.y);
+				v_buf->push_back(z);
+				v_buf->push_back(c.x); v_buf->push_back(c.y); v_buf->push_back(c.z); v_buf->push_back(1.0f);
+				if (i > 0) {
+					idx_buf->push_back(base_idx2 + i - 1); idx_buf->push_back(base_idx2 + i);
+				}
+			}
+		}
+	}
+}
+
+void build_env_buffer(const std::vector<std::vector<vec2d>>& env, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
+	std::vector<GLfloat>* v_buf2, std::vector<GLuint>* idx_buf2, std::vector<GLfloat>* v_buf3, std::vector<GLuint>* idx_buf3) {
+	glm::vec3 c = red;
+	float scale = 20.0f;
+	float z = 10.0f;
+	for (auto& line : env) {
+		GLuint base_idx = (GLuint)v_buf->size() / 7;
+		for (auto& pt : line) {
+			if (line.size() == 1) {
+				v_buf->push_back(pt.x - 5);
+				v_buf->push_back(g_image_height - pt.y);
+				v_buf->push_back(z);
+				v_buf->push_back(c.x); v_buf->push_back(c.y); v_buf->push_back(c.z); v_buf->push_back(1.0f);
+				v_buf->push_back(pt.x + 5);
+				v_buf->push_back(g_image_height - pt.y);
+				v_buf->push_back(z);
+				v_buf->push_back(c.x); v_buf->push_back(c.y); v_buf->push_back(c.z); v_buf->push_back(1.0f);
+				v_buf->push_back(pt.x);
+				v_buf->push_back(g_image_height - pt.y + 5);
+				v_buf->push_back(z);
+				v_buf->push_back(c.x); v_buf->push_back(c.y); v_buf->push_back(c.z); v_buf->push_back(1.0f);
+				v_buf->push_back(pt.x);
+				v_buf->push_back(g_image_height - pt.y - 5);
+				v_buf->push_back(z);
+				v_buf->push_back(c.x); v_buf->push_back(c.y); v_buf->push_back(c.z); v_buf->push_back(1.0f);
+				idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
+				idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
+			}
+			else {
 				v_buf->push_back(pt.x);
 				v_buf->push_back(g_image_height - pt.y);
 				v_buf->push_back(z);
 				v_buf->push_back(c.x); v_buf->push_back(c.y); v_buf->push_back(c.z); v_buf->push_back(1.0f);
 			}
-			idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
-			idx_buf->push_back(base_idx + 1); idx_buf->push_back(base_idx + 2);
-			idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
-			idx_buf->push_back(base_idx + 3); idx_buf->push_back(base_idx + 0);
-		}
-		GLuint base_idx2 = (GLuint)v_buf->size() / 7;
-		for (size_t i = 0; i < p.traj.size(); ++i) {
-			auto& pt = p.traj[i].pos;
-			v_buf->push_back(pt.x);
-			v_buf->push_back(g_image_height - pt.y);
-			v_buf->push_back(z);
-			v_buf->push_back(c.x); v_buf->push_back(c.y); v_buf->push_back(c.z); v_buf->push_back(1.0f);
+			size_t i = &pt - line.data();
 			if (i > 0) {
-				idx_buf->push_back(base_idx2 + i - 1); idx_buf->push_back(base_idx2 + i);
+				idx_buf->push_back(base_idx + i - 1); idx_buf->push_back(base_idx + i);
 			}
 		}
 	}
@@ -1141,7 +1188,7 @@ int main(int, char**) {
 		{
 			std::vector<GLfloat> line_buf, wide_line_buf, wide_line_buf2;
 			std::vector<GLuint> line_idx, wide_line_idx, wide_line_idx2;
-			if (!g_simulating) {
+			if (g_problem == nullptr) {
 				build_markers_buffer(g_markers, &line_buf, &line_idx, &wide_line_buf, &wide_line_idx, &wide_line_buf2, &wide_line_idx2);
 				if (g_parabola_test) {
 					std::vector<double> xy;
@@ -1161,6 +1208,7 @@ int main(int, char**) {
 			}
 
 			build_particles_buffer(g_particles, &line_buf, &line_idx, &wide_line_buf, &wide_line_idx, &wide_line_buf2, &wide_line_idx2);
+			build_env_buffer(g_env, &line_buf, &line_idx, &wide_line_buf, &wide_line_idx, &wide_line_buf2, &wide_line_idx2);
 
 			lines.update_buffers_for_nontextured_geoms(line_buf, line_idx);
 			wide_lines.update_buffers_for_nontextured_geoms(wide_line_buf, wide_line_idx);
