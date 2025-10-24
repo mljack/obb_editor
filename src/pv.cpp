@@ -498,6 +498,14 @@ void BadmintonClearShot::init(std::map<int, Marker>* markers) {
  * @param markers Pointer to map of markers to be initialized
  */
 void RarefiedGas::init(std::map<int, Marker>* markers) {
+	// Initialize boundary variables
+	container_min_x = 600.0;
+	container_max_x = 1000.0;
+	container_min_y = -1000.0;
+	container_max_y = -600.0;
+	num_of_particles = 10000;
+	particle_radius = 0.2;
+
 	// Clear existing force fields (no gravity in this simulation)
 	g_fields.clear();
 	//g_fields.push_back(std::make_shared<GravityOnEarth>());
@@ -505,24 +513,25 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	// Define a rectangular container boundary
 	g_env.clear();
 	g_env.push_back(std::vector<vec2d>());
-	g_env.back().push_back(vec2d(600.0, -600.0));    // Top-left
-	g_env.back().push_back(vec2d(1000.0, -600.0));   // Top-right
-	g_env.back().push_back(vec2d(1000.0, -1000.0));  // Bottom-right
-	g_env.back().push_back(vec2d(600.0, -1000.0));   // Bottom-left
-	g_env.back().push_back(vec2d(600.0, -600.0));    // Close the rectangle
+	g_env.back().push_back(vec2d(container_min_x, container_max_y));    // Top-left
+	g_env.back().push_back(vec2d(container_max_x, container_max_y));   // Top-right
+	g_env.back().push_back(vec2d(container_max_x, container_min_y));  // Bottom-right
+	g_env.back().push_back(vec2d(container_min_x, container_min_y));   // Bottom-left
+	g_env.back().push_back(vec2d(container_min_x, container_max_y));    // Close the rectangle
 
 	// Set up random number generators for particle positions and velocities
 	std::default_random_engine generator(1234);       // Fixed seed for reproducibility
-	std::uniform_real_distribution<double> xy_dist(0.0 + 0.1, 400.0 - 0.1);  // Position distribution within container
+	std::uniform_real_distribution<double> x_dist(container_min_x + 0.1, container_max_x - 0.1);  // Position x distribution within container
+	std::uniform_real_distribution<double> y_dist(container_min_y + 0.1, container_max_y - 0.1);  // Position y distribution within container
 	std::uniform_real_distribution<double> vel_dist(-5.0, 5.0);            // Random velocity components
 
-	// Create 1000 gas particles with random positions and velocities
+	// Create gas particles with random positions and velocities
 	markers->clear();
 	Marker m;
-	for (int i = 0; i < 10000; ++i) {
+	for (int i = 0; i < num_of_particles; ++i) {
 		// Position within container (offset by container coordinates)
-		m.x = xy_dist(generator) + 600.0;
-		m.y = xy_dist(generator) - 1000.0;
+		m.x = x_dist(generator);
+		m.y = y_dist(generator);
 		// Random velocities
 		m.vx = vel_dist(generator);
 		m.vy = vel_dist(generator);
@@ -534,7 +543,7 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	int count = 0;
 	for (auto&[idx, m] : *markers) {
 		// Small radius for gas particles
-		g_particles[count++].set(g_sim_time, idx, /*radius=*/0.2,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
+		g_particles[count++].set(g_sim_time, idx, particle_radius,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
 	}
 }
 
@@ -548,11 +557,15 @@ void RarefiedGas::handle_boundary() {
 	// Check each particle against container walls
 	for (auto& p : g_particles) {
 		// Left and right walls - reflect x-velocity
-		if ((p.pos.x < 600.0 && p.vel.x < 0.0) || (p.pos.x > 1000.0 && p.vel.x > 0.0))
+		if ((p.pos.x < container_min_x && p.vel.x < 0.0) || (p.pos.x > container_max_x && p.vel.x > 0.0)) {
 			p.vel.x *= -1;
+			p.is_colliding = true;
+		}
 		// Bottom and top walls - reflect y-velocity
-		if ((p.pos.y < -1000.0 && p.vel.y < 0.0) || (p.pos.y > -600.0 && p.vel.y > 0.0))
+		if ((p.pos.y < container_min_y && p.vel.y < 0.0) || (p.pos.y > container_max_y && p.vel.y > 0.0)) {
 			p.vel.y *= -1;
+			p.is_colliding = true;
+		}
 	}
 }
 
@@ -567,20 +580,81 @@ void RarefiedGas::handle_collision() {
 	for (auto& p : g_particles)
 		p.is_colliding = false;
 
-	// Check all pairs of particles for collisions
+	// Space partitioning optimization using grid system
+	double container_width = container_max_x - container_min_x;
+	double container_height = container_max_y - container_min_y;
+	// Adaptive grid size: ensures grid is at least particle diameter and constains at least one particle when distributes particles evenly.
+	double grid_size = std::max(particle_radius * 2, std::sqrt(container_width * container_height / num_of_particles));
+	// printf("grid_size: %f, max_grid_x: %f\n", grid_size, container_width / grid_size);
+	// Factor to combine grid_x and grid_y into a unique key (power of 2 for fast multiplication)
+	int grid_width_factor = 1024;
+
+	// Create grid: map from grid coordinates to list of particle indices
+	std::unordered_map<int, std::vector<int>> grid;
+
+	// Function to get grid key from particle position
+	auto get_grid_key = [&](double x, double y) -> int {
+		// Convert world coordinates to grid coordinates
+		int grid_x = static_cast<int>((x - this->container_min_x) / grid_size);
+		int grid_y = static_cast<int>((y - this->container_min_y) / grid_size);
+		// Ensure grid coordinates are within bounds
+		grid_x = std::max(0, std::min(grid_x, static_cast<int>(container_width / grid_size) - 1));
+		grid_y = std::max(0, std::min(grid_y, static_cast<int>(container_height / grid_size) - 1));
+		// Create a unique key for the grid cell
+		return grid_y * grid_width_factor + grid_x;
+	};
+
+	// Populate the grid with particle indices
 	for (int i = 0; i < g_particles.size(); ++i) {
-		for (int j = i + 1; j < g_particles.size(); ++j) {
-			vec2d diff = g_particles[i].pos - g_particles[j].pos;
-			double dist2 = glm::dot(diff, diff);
-			double R = g_particles[i].radius + g_particles[j].radius;
-			if (dist2 < R * R) {
-				double diff_vr = glm::dot(diff, g_particles[j].vel - g_particles[i].vel);
-				if (diff_vr < 0.0)
-					continue;
-				g_particles[i].is_colliding = true;
-				g_particles[j].is_colliding = true;
-				g_particles[i].vel += diff_vr * diff / dist2;
-				g_particles[j].vel -= diff_vr * diff / dist2;
+		auto& p = g_particles[i];
+		int key = get_grid_key(p.pos.x, p.pos.y);
+		grid[key].push_back(i);
+	}
+
+	// For each particle, check collisions with particles in the same grid and neighboring grids
+	for (int i = 0; i < g_particles.size(); ++i) {
+		auto& p = g_particles[i];
+		
+		// Check current grid cell and all 8 neighboring cells
+		for (int dy = -1; dy <= 1; ++dy) {
+			for (int dx = -1; dx <= 1; ++dx) {
+				// Calculate neighboring grid cell coordinates
+				int grid_x = static_cast<int>((p.pos.x - this->container_min_x) / grid_size) + dx;
+				int grid_y = static_cast<int>((p.pos.y - this->container_min_y) / grid_size) + dy;
+				
+				// Check if the neighboring grid cell is within bounds
+				if (grid_x >= 0 && grid_x < static_cast<int>(container_width / grid_size) &&
+					grid_y >= 0 && grid_y < static_cast<int>(container_height / grid_size)) {
+					
+					// Get key for neighboring grid cell
+					int neighbor_key = grid_y * grid_width_factor + grid_x;
+					
+					// Check if the neighboring grid cell exists
+					auto it = grid.find(neighbor_key);
+					if (it != grid.end()) {
+						// Check collisions with all particles in the neighboring grid cell
+						for (int j : it->second) {
+							// Avoid checking the same pair twice (i < j)
+							if (i >= j) continue;
+							
+							// Check collision between particles i and j
+							vec2d diff = g_particles[i].pos - g_particles[j].pos;
+							double dist2 = glm::dot(diff, diff);
+							double R = g_particles[i].radius + g_particles[j].radius;
+							
+							if (dist2 < R * R) {
+								double diff_vr = glm::dot(diff, g_particles[j].vel - g_particles[i].vel);
+								if (diff_vr < 0.0)
+									continue;
+								
+								g_particles[i].is_colliding = true;
+								g_particles[j].is_colliding = true;
+								g_particles[i].vel += diff_vr * diff / dist2;
+								g_particles[j].vel -= diff_vr * diff / dist2;
+							}
+						}
+					}
+				}
 			}
 		}
 	}

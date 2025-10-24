@@ -97,6 +97,14 @@ public:
 	void init(std::map<int, Marker>* markers) override;
 	void handle_boundary() override;
 	void handle_collision() override;
+private:
+	// Container boundary variables
+	int num_of_particles;
+	double particle_radius;
+	double container_min_x;
+	double container_min_y;
+	double container_max_x;
+	double container_max_y;
 };
 
 extern std::unique_ptr<Problem> g_problem;
