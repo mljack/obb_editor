@@ -8,6 +8,7 @@
  */
 
 #include "pv.h"
+
 /* Physics Vector */
 
 #include <glm/gtc/constants.hpp>
@@ -28,13 +29,10 @@ std::vector<std::shared_ptr<Field>> g_fields;       ///< Force fields affecting 
 std::vector<Particle> g_particles;  ///< Simulated particles
 std::vector<float> g_t_array, g_energy_array; ///< Energy tracking arrays
 
-// Helper functions and GLM equivalents
-// pi => glm::pi()
-// angle() => glm::orientedAngle(), glm::angle()
-// distance_v() => glm::distance()
-// dot()
-// cross()
-// glm::length() 
+// Speed distribution statistics global variables
+std::vector<int> g_speed_hist;
+const int SPEED_BINS = 200;
+double g_max_speed = 20.0; // Dynamic maximum speed
 
 /**
  * @brief Default acceleration function
@@ -344,6 +342,30 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		g_sim_time += timestep;
 		g_t_array.push_back(g_sim_time);
 		g_energy_array.push_back(E);
+
+		// Update maximum speed of all particles
+		double max_speed = 0.0;
+		for (const auto& p : g_particles)
+			max_speed = std::max(max_speed, glm::length(p.vel));
+
+		// Add a small buffer (20%) to ensure all particles are visible
+		g_max_speed = max_speed * 1.2;
+		// Ensure minimum value to avoid empty plots
+		if (g_max_speed < 0.1) {
+			g_max_speed = 0.1;
+		}
+		
+		// Calculate speed distribution
+		g_speed_hist.assign(SPEED_BINS, 0);
+		for (const auto& p : g_particles) {
+			// Calculate speed (velocity magnitude)
+			double speed = glm::length(p.vel);
+			
+			// Map speed to histogram bin
+			int bin = static_cast<int>((speed / g_max_speed) * SPEED_BINS);
+			bin = std::max(0, std::min(bin, SPEED_BINS - 1));
+			g_speed_hist[bin]++;
+		}
 	}
 }
 

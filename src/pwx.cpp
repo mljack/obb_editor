@@ -82,8 +82,6 @@
 
 #include "pwx.h"
 
-#define M_PI 3.141592653589793
-
 namespace {
 	double pi = glm::pi<double>();
 	double pi2 = glm::two_pi<double>();
@@ -360,8 +358,8 @@ void solve3_c(std::vector<double>* rr, double k1, double k2, double k3) {
 
     // Three real roots (using trigonometric formulas)
     roots[0] = std::complex<double>(2 * sqrt_p_over_3 * std::cos(phi / 3.0), 0.0) + shift;
-    roots[1] = std::complex<double>(2 * sqrt_p_over_3 * std::cos((phi + 2 * M_PI) / 3.0), 0.0) + shift;
-    roots[2] = std::complex<double>(2 * sqrt_p_over_3 * std::cos((phi - 2 * M_PI) / 3.0), 0.0) + shift;
+    roots[1] = std::complex<double>(2 * sqrt_p_over_3 * std::cos((phi + 2 * pi) / 3.0), 0.0) + shift;
+    roots[2] = std::complex<double>(2 * sqrt_p_over_3 * std::cos((phi - 2 * pi) / 3.0), 0.0) + shift;
   }
 
   // Clean up tiny imaginary parts (numerical errors)

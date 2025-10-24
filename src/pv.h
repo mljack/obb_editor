@@ -72,6 +72,14 @@ public:
 extern std::vector<Particle> g_particles;
 extern std::vector<std::vector<vec2d>> g_env;
 extern std::vector<float> g_t_array, g_energy_array;
+extern std::vector<int> g_speed_hist;
+extern const int SPEED_BINS;
+extern double g_max_speed;
+
+/**
+ * @brief Calculate and update the maximum speed of all particles
+ */
+void update_max_speed();
 
 class Problem {
 public:

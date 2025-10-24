@@ -12,6 +12,8 @@
 #include <functional>
 #include <filesystem>
 
+#include <glm/glm.hpp>
+
 #include "marker.h"
 #include "pv.h"
 
@@ -425,11 +427,98 @@ void render_plots() {
 	ImGui::SetNextWindowBgAlpha(0.8f);
 	ImGui::Begin("Plots");
 
-	if (ImPlot::BeginPlot("Plot", ImVec2(920, 310), ImPlotFlags_NoTitle)) {
-		ImPlot::SetupAxes("t", "E", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
-		ImPlot::PlotLine("Energy(t)", g_t_array.data(), g_energy_array.data(), (int)g_t_array.size());
-		ImPlot::EndPlot();
+	// Create tabs with default selection
+	static bool default_selected = true; // Track first frame to set default tab
+	if (ImGui::BeginTabBar("PlotTabs")) {
+		// Energy vs Time tab
+		if (ImGui::BeginTabItem("Energy vs Time")) {
+			if (ImPlot::BeginPlot("Energy vs Time", ImVec2(920, 310), ImPlotFlags_NoTitle)) {
+				ImPlot::SetupAxes("t", "E", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
+				ImPlot::PlotLine("Energy(t)", g_t_array.data(), g_energy_array.data(), (int)g_t_array.size());
+				ImPlot::EndPlot();
+			}
+			ImGui::EndTabItem();
+		}
+		
+		// Speed Distribution tab (default selected)
+		if (ImGui::BeginTabItem("Speed Distribution", nullptr, default_selected ? ImGuiTabItemFlags_SetSelected : 0)) {
+			default_selected = false; // Only set selected on first frame
+			if (ImPlot::BeginPlot("Speed Distribution", ImVec2(920, 310), ImPlotFlags_NoTitle)) {
+				static std::vector<double> speed_bin_centers;
+				static std::vector<double> maxwell_boltzmann_curve;
+				static std::vector<double> curve_x;
+				
+				// Initialize or update speed bin centers
+				speed_bin_centers.resize(SPEED_BINS);
+				double bin_width = g_max_speed / SPEED_BINS;
+				for (int i = 0; i < SPEED_BINS; ++i) {
+					// Use bin center instead of left edge
+					speed_bin_centers[i] = (i + 0.5) * bin_width;
+				}
+				
+				// Calculate Maxwell-Boltzmann distribution if there are particles
+				if (!g_particles.empty() && !g_speed_hist.empty()) {
+					// Calculate average kinetic energy to estimate temperature
+					double total_kinetic_energy = 0.0;
+					for (const auto& p : g_particles) {
+						total_kinetic_energy += 0.5 * p.mass * glm::dot(p.vel, p.vel);
+					}
+					double avg_kinetic_energy = total_kinetic_energy / g_particles.size();
+					
+					// For 2D, average kinetic energy E_k = kT
+					// Here we use reduced units where k=1 for simplicity
+					double temperature = avg_kinetic_energy; // T = E_k in reduced units
+					
+					// Prepare curve data with more points for smoothness
+					int curve_points = 500;
+					curve_x.resize(curve_points);
+					maxwell_boltzmann_curve.resize(curve_points);
+					
+					// Use actual particle mass (assuming all particles have the same mass)
+					double m = g_particles[0].mass;
+					double k = 1.0; // Boltzmann constant in reduced units
+					
+					// Calculate total count for normalization
+					int total_count = 0;
+					for (int count : g_speed_hist) {
+						total_count += count;
+					}
+					
+					// 2D Maxwell-Boltzmann distribution: f(v) = (m/(kT)) * v * exp(-mv²/(2kT))
+					double bin_width = g_max_speed / SPEED_BINS;
+					for (int i = 0; i < curve_points; ++i) {
+						curve_x[i] = (double)i / curve_points * g_max_speed;
+						double v = curve_x[i];
+						double exponent = -m * v * v / (2 * k * temperature);
+						double distribution = (m / (k * temperature)) * v * exp(exponent);
+						
+						// Scale to match histogram counts - ensure proper scaling with bin width
+						maxwell_boltzmann_curve[i] = distribution * total_count * bin_width;
+					}
+				}
+				
+				ImPlot::SetupAxes("Speed (m/s)", "Freq", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
+				if (!g_speed_hist.empty()) {
+					double bin_width = g_max_speed / SPEED_BINS;
+					
+					// Create histogram using bar chart with explicit x-axis positions and bin width
+					for (int i = 0; i < SPEED_BINS; ++i) {
+						ImPlot::PlotBars("Simulation Results", &g_speed_hist[i], 1, bin_width, speed_bin_centers[i] - bin_width/2);
+					}
+					
+					// Plot Maxwell-Boltzmann theoretical curve
+					if (!maxwell_boltzmann_curve.empty() && !curve_x.empty()) {
+						ImPlot::PlotLine("Maxwell-Boltzmann Distribution (2D)", curve_x.data(), maxwell_boltzmann_curve.data(), curve_x.size());
+					}
+				}
+				ImPlot::EndPlot();
+			}
+			ImGui::EndTabItem();
+		}
+		
+		ImGui::EndTabBar();
 	}
+	
 	ImGui::End();
 }
 
