@@ -14,6 +14,7 @@
 #include <glm/glm.hpp>
 
 #include <random>
+#include <chrono>
 
 /**
  * @brief Global simulation variables
@@ -150,6 +151,7 @@ void compute_accel() {
  *        6 = Velocity Verlet
  */
 void run_one_simulation_step(double timestep, int method_idx) {
+	auto t0 = std::chrono::high_resolution_clock::now();
 	if (method_idx == 0) { 	// Forward Euler method (explicit)
 		//printf("Forward Euler \n");
 		compute_accel();  // Calculate accelerations at current state
@@ -300,11 +302,17 @@ void run_one_simulation_step(double timestep, int method_idx) {
 			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
 		}
 	}
+	auto t1 = std::chrono::high_resolution_clock::now();
 
-	if (g_problem) {
+	if (g_problem)
 		g_problem->handle_collision();
+
+  auto t2 = std::chrono::high_resolution_clock::now();
+
+		if (g_problem)
 		g_problem->handle_boundary();
-	}
+
+  auto t3 = std::chrono::high_resolution_clock::now();
 
 	if (g_show_trajectories) {
 		for (auto& p : g_particles)
@@ -322,6 +330,14 @@ void run_one_simulation_step(double timestep, int method_idx) {
 			}
 		}
 	}
+
+  auto t4 = std::chrono::high_resolution_clock::now();
+	double time_integrator = std::chrono::duration<double, std::milli>(t1 - t0).count();
+	double time_collision = std::chrono::duration<double, std::milli>(t2 - t1).count();
+	double time_boundary = std::chrono::duration<double, std::milli>(t3 - t2).count();
+	double time_energy = std::chrono::duration<double, std::milli>(t4 - t3).count();
+	printf("integrator: %.2f, collision: %.2f, boundary: %.2f, energy: %.2f\n", time_integrator, time_collision, time_boundary, time_energy);
+
 	if (isnan(E)) {
 		g_simulating = false;
 	} else {
@@ -497,13 +513,13 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 
 	// Set up random number generators for particle positions and velocities
 	std::default_random_engine generator(1234);       // Fixed seed for reproducibility
-	std::uniform_real_distribution<double> xy_dist(0.0 + 0.1, 200.0 - 0.1);  // Position distribution within container
+	std::uniform_real_distribution<double> xy_dist(0.0 + 0.1, 400.0 - 0.1);  // Position distribution within container
 	std::uniform_real_distribution<double> vel_dist(-5.0, 5.0);            // Random velocity components
 
 	// Create 1000 gas particles with random positions and velocities
 	markers->clear();
 	Marker m;
-	for (int i = 0; i < 1000; ++i) {
+	for (int i = 0; i < 10000; ++i) {
 		// Position within container (offset by container coordinates)
 		m.x = xy_dist(generator) + 600.0;
 		m.y = xy_dist(generator) - 1000.0;
@@ -518,7 +534,7 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	int count = 0;
 	for (auto&[idx, m] : *markers) {
 		// Small radius for gas particles
-		g_particles[count++].set(g_sim_time, idx, /*radius=*/1.0,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
+		g_particles[count++].set(g_sim_time, idx, /*radius=*/0.2,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
 	}
 }
 
@@ -556,28 +572,15 @@ void RarefiedGas::handle_collision() {
 		for (int j = i + 1; j < g_particles.size(); ++j) {
 			vec2d diff = g_particles[i].pos - g_particles[j].pos;
 			double dist2 = glm::dot(diff, diff);
-			auto pair = std::make_pair(i, j);
-			bool already_in_colliding = (collision_pairs.count(pair) != 0);
 			double R = g_particles[i].radius + g_particles[j].radius;
 			if (dist2 < R * R) {
-				vec2d dir = 1 / std::sqrt(dist2) * diff;
-				double v1 = glm::dot(dir, g_particles[i].vel);
-				double v2 = glm::dot(dir, g_particles[j].vel);
-				//if (v2 - v1 < 0.0) {
-				//	collision_pairs.erase(pair);
-				//	continue;
-				//}
-				if (already_in_colliding)
+				double diff_vr = glm::dot(diff, g_particles[j].vel - g_particles[i].vel);
+				if (diff_vr < 0.0)
 					continue;
-				collision_pairs.insert(pair);
 				g_particles[i].is_colliding = true;
 				g_particles[j].is_colliding = true;
-				g_particles[i].vel += v2 * dir - v1 * dir;
-				g_particles[j].vel += v1 * dir - v2 * dir;
-				continue;
-			}
-			else {
-				collision_pairs.erase(pair);
+				g_particles[i].vel += diff_vr * diff / dist2;
+				g_particles[j].vel -= diff_vr * diff / dist2;
 			}
 		}
 	}
