@@ -787,7 +787,7 @@ void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfl
 
 void build_particles_buffer(const std::vector<Particle>& particles, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
 	std::vector<GLfloat>* v_buf2, std::vector<GLuint>* idx_buf2, std::vector<GLfloat>* v_buf3, std::vector<GLuint>* idx_buf3) {
-	glm::vec3 c = red;
+	glm::vec3 c[] = { red, yellow, blue, green };
 	float z = 10.0f;
 	for (auto& p : particles) {
 		std::array<glm::vec2, 4> pts = {
@@ -804,7 +804,7 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 			if (p.is_colliding) {
 				v_buf->push_back(green.x); v_buf->push_back(green.y); v_buf->push_back(green.z); v_buf->push_back(1.0f);
 			} else {
-				v_buf->push_back(red.x); v_buf->push_back(red.y); v_buf->push_back(red.z); v_buf->push_back(1.0f);
+				v_buf->push_back(c[p.color_idx].x); v_buf->push_back(c[p.color_idx].y); v_buf->push_back(c[p.color_idx].z); v_buf->push_back(1.0f);
 			}
 		}
 		idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
@@ -812,14 +812,14 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 		idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
 		idx_buf->push_back(base_idx + 3); idx_buf->push_back(base_idx + 0);
 
-		if (g_show_trajectories) {
+		if (g_show_trajectories || p.show_trajectory) {
 			GLuint base_idx2 = (GLuint)v_buf->size() / 7;
 			for (size_t i = 0; i < p.traj.size(); ++i) {
 				auto& pt = p.traj[i].pos;
 				v_buf->push_back(pt.x);
 				v_buf->push_back(g_image_height - pt.y);
 				v_buf->push_back(z);
-				v_buf->push_back(c.x); v_buf->push_back(c.y); v_buf->push_back(c.z); v_buf->push_back(1.0f);
+				v_buf->push_back(c[p.color_idx].x); v_buf->push_back(c[p.color_idx].y); v_buf->push_back(c[p.color_idx].z); v_buf->push_back(1.0f);
 				if (i > 0) {
 					idx_buf->push_back(base_idx2 + i - 1); idx_buf->push_back(base_idx2 + i);
 				}

@@ -20,14 +20,15 @@ struct TrajPt {
 };
 struct Particle {
 	Particle() {}
-	void set(double t, int id1, double radius1, double mass1, const vec2d& pos1, const vec2d& vel1, const vec2d& accel1) {
-		id = id1; radius = radius1;  mass = mass1;  pos = pos1;
+	void set(double t, int id1, int color_idx1, double radius1, double mass1, const vec2d& pos1, const vec2d& vel1, const vec2d& accel1) {
+		id = id1; color_idx = color_idx1;  radius = radius1;  mass = mass1;  pos = pos1;
 		vel = vel1; accel = accel1;
 	}
 	void set_solution(std::function<void(double, vec2d*, vec2d*, vec2d*)> s) {
 		solution = s;
 	}
 	int id;
+	int color_idx;
 	double radius;
 	double mass;
 	vec2d pos;
@@ -37,6 +38,7 @@ struct Particle {
 	vec2d vel_predicted;
 	vec2d accel_predicted;
 	bool is_colliding = false;
+	bool show_trajectory = false;
 	std::vector<TrajPt> traj;
 	std::function<void(double, vec2d*, vec2d*, vec2d*)> solution = nullptr;
 };

@@ -380,8 +380,9 @@ void render_simulation_settings() {
 			g_env.clear();
 			g_problem = nullptr;
 		}
+		bool g_show_trajectories_old = g_show_trajectories;
 		ImGui::Checkbox("Show Trajectories", &g_show_trajectories);
-		if (!g_show_trajectories) {
+		if (g_show_trajectories_old != g_show_trajectories && !g_show_trajectories) {
 			for (auto& p : g_particles)
 				p.traj.clear();
 		}

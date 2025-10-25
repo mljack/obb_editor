@@ -113,11 +113,10 @@ void start_simulation(int problem_idx, std::map<int, Marker>* markers) {
 		g_problem->init(markers);
 
 	// Start tracking trajectories if enabled
-	if (g_show_trajectories) {
 		for (auto& p : g_particles)
-			p.traj.emplace_back(g_sim_time, p.pos);  // Record initial position
+			if (g_show_trajectories || p.show_trajectory)
+				p.traj.emplace_back(g_sim_time, p.pos);  // Record initial position
 	}
-}
 
 /**
  * @brief Computes acceleration for all particles based on active force fields
@@ -305,31 +304,30 @@ void run_one_simulation_step(double timestep, int method_idx) {
 	if (g_problem)
 		g_problem->handle_collision();
 
-  auto t2 = std::chrono::high_resolution_clock::now();
+	auto t2 = std::chrono::high_resolution_clock::now();
 
-		if (g_problem)
+	if (g_problem)
 		g_problem->handle_boundary();
 
-  auto t3 = std::chrono::high_resolution_clock::now();
+	auto t3 = std::chrono::high_resolution_clock::now();
 
-	if (g_show_trajectories) {
-		for (auto& p : g_particles)
+	for (auto& p : g_particles)
+		if (g_show_trajectories || p.show_trajectory)
 			p.traj.emplace_back(g_sim_time, p.pos);
-	}
 
 	double E = 0.0;
 	for (auto& p : g_particles) {
 		if (p.solution) {
 			p.solution(g_sim_time + timestep, &p.pos, &p.vel, &p.accel);
 		} else {
-			E += 0.5 * glm::dot(p.vel, p.vel);
+			E += 0.5 * p.mass * glm::dot(p.vel, p.vel);
 			for (auto& field : g_fields) {
 				E += field->compute_potential(p.pos);
 			}
 		}
 	}
 
-  auto t4 = std::chrono::high_resolution_clock::now();
+	auto t4 = std::chrono::high_resolution_clock::now();
 	double time_integrator = std::chrono::duration<double, std::milli>(t1 - t0).count();
 	double time_collision = std::chrono::duration<double, std::milli>(t2 - t1).count();
 	double time_boundary = std::chrono::duration<double, std::milli>(t3 - t2).count();
@@ -449,7 +447,7 @@ void PlanetOrbit::init(std::map<int, Marker>* markers) {
 	g_particles.resize(markers->size());
 	int count = 0;
 	for (auto&[idx, m] : *markers) {
-		g_particles[count++].set(g_sim_time, idx, /*radius=*/4.0,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
+		g_particles[count++].set(g_sim_time, idx, /*color_idx=*/0, /*radius=*/4.0,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
 	}
 
 	// The commented code below would add an analytical solution for comparison
@@ -507,7 +505,7 @@ void BadmintonClearShot::init(std::map<int, Marker>* markers) {
 	g_particles.resize(markers->size());
 	int count = 0;
 	for (auto&[idx, m] : *markers) {
-		g_particles[count++].set(g_sim_time, idx, /*radius=*/4.0,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
+		g_particles[count++].set(g_sim_time, idx, /*color_idx=*/0, /*radius=*/4.0,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
 	}
 }
 
@@ -525,7 +523,7 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	container_max_x = 1000.0;
 	container_min_y = -1000.0;
 	container_max_y = -600.0;
-	num_of_particles = 10000;
+	num_of_particles = 20000;
 	particle_radius = 0.2;
 
 	// Clear existing force fields (no gravity in this simulation)
@@ -565,8 +563,25 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	int count = 0;
 	for (auto&[idx, m] : *markers) {
 		// Small radius for gas particles
-		g_particles[count++].set(g_sim_time, idx, particle_radius,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
+		g_particles[count++].set(g_sim_time, idx, /*color_idx=*/0, particle_radius, /*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
 	}
+
+	g_particles.back().show_trajectory = true;
+	Particle p;
+	p.show_trajectory = true;
+	p.set(g_sim_time, g_particles.size(), /*color_idx=*/1, particle_radius * 10, /*mass=*/30.0,
+		vec2d((container_min_x + container_max_x) / 2, (container_min_y + container_max_y) / 2),
+		vec2d(0.0, 0.0), vec2d(0.0, 0.0));
+	g_particles.push_back(p);
+	p.pos.x -= 100.0;
+	p.pos.y -= 100.0;
+	g_particles.push_back(p);
+	p.pos.x += 200.0;
+	g_particles.push_back(p);
+	p.pos.y += 200.0;
+	g_particles.push_back(p);
+	p.pos.x -= 200.0;
+	g_particles.push_back(p);
 }
 
 /**
@@ -592,28 +607,28 @@ void RarefiedGas::handle_boundary() {
 }
 
 /**
- * @brief Handles collisions between gas particles
- * 
- * Implements elastic collisions between particles, ensuring momentum and kinetic energy
- * are conserved during interactions.
- */
+	* @brief Handles collisions between gas particles
+	* 
+	* Implements elastic collisions between particles, ensuring momentum and kinetic energy
+	* are conserved during interactions.
+	*/
 void RarefiedGas::handle_collision() {
 	// Reset collision flags for all particles
 	for (auto& p : g_particles)
 		p.is_colliding = false;
-
+ 
 	// Space partitioning optimization using grid system
 	double container_width = container_max_x - container_min_x;
 	double container_height = container_max_y - container_min_y;
-	// Adaptive grid size: ensures grid is at least particle diameter and constains at least one particle when distributes particles evenly.
+	// Adaptive grid size: ensures grid is at least particle diameter and constains at least one particle when distributes particles evenly
 	double grid_size = std::max(particle_radius * 2, std::sqrt(container_width * container_height / num_of_particles));
 	// printf("grid_size: %f, max_grid_x: %f\n", grid_size, container_width / grid_size);
 	// Factor to combine grid_x and grid_y into a unique key (power of 2 for fast multiplication)
 	int grid_width_factor = 1024;
-
+	
 	// Create grid: map from grid coordinates to list of particle indices
 	std::unordered_map<int, std::vector<int>> grid;
-
+	
 	// Function to get grid key from particle position
 	auto get_grid_key = [&](double x, double y) -> int {
 		// Convert world coordinates to grid coordinates
@@ -625,7 +640,7 @@ void RarefiedGas::handle_collision() {
 		// Create a unique key for the grid cell
 		return grid_y * grid_width_factor + grid_x;
 	};
-
+ 
 	// Populate the grid with particle indices
 	for (int i = 0; i < g_particles.size(); ++i) {
 		auto& p = g_particles[i];
@@ -657,23 +672,40 @@ void RarefiedGas::handle_collision() {
 						// Check collisions with all particles in the neighboring grid cell
 						for (int j : it->second) {
 							// Avoid checking the same pair twice (i < j)
-							if (i >= j) continue;
+							if (i >= j)
+								continue;
 							
 							// Check collision between particles i and j
 							vec2d diff = g_particles[i].pos - g_particles[j].pos;
 							double dist2 = glm::dot(diff, diff);
 							double R = g_particles[i].radius + g_particles[j].radius;
 							
-							if (dist2 < R * R) {
-								double diff_vr = glm::dot(diff, g_particles[j].vel - g_particles[i].vel);
-								if (diff_vr < 0.0)
-									continue;
+							if (dist2 > R * R)
+								continue;
+	
+							// Calculate relative velocity vector
+							vec2d rel_vel = g_particles[j].vel - g_particles[i].vel;
 								
-								g_particles[i].is_colliding = true;
-								g_particles[j].is_colliding = true;
-								g_particles[i].vel += diff_vr * diff / dist2;
-								g_particles[j].vel -= diff_vr * diff / dist2;
-							}
+							// Calculate relative velocity along normal direction
+							double rel_vn = glm::dot(rel_vel, diff);
+								
+							// Only process if particles are approaching each other
+							if (rel_vn < 0.0)
+								continue;
+	
+							g_particles[i].is_colliding = true;
+							g_particles[j].is_colliding = true;
+	
+							double m1 = g_particles[i].mass;
+							double m2 = g_particles[j].mass;
+									 
+							// Calculate impulse scalar for elastic collision
+							// Formula: j = 2 * m1 * m2 * rel_vn / (m1 + m2)
+							double impulse = (2.0 * m1 * m2 * rel_vn) / (m1 + m2);
+									
+							// Update velocities using impulse and normal
+							g_particles[i].vel += (impulse / m1) * diff / dist2;
+							g_particles[j].vel -= (impulse / m2) * diff / dist2;
 						}
 					}
 				}
