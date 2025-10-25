@@ -115,6 +115,13 @@ private:
 	double container_min_y;
 	double container_max_x;
 	double container_max_y;
+	double center_x;
+	double center_y;
+	double wall_width;
+	double wall_min_x;
+	double wall_max_x;
+	double hole_min_y;
+	double hole_max_y;
 };
 
 extern std::unique_ptr<Problem> g_problem;
