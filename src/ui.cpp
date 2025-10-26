@@ -316,9 +316,9 @@ void render_simulation_settings() {
 	}
 
 	if (!g_parabola_test) {
-		static int timestep_idx = 4;
-		static double steps[] = { 0.00001, 0.0001, 0.001, 0.01, 0.1, 0.2, 0.5 };
-		static const char* timestep_opts[] = { "0.00001", "0.0001", "0.001", "0.01", "0.1", "0.2", "0.5" };
+		static int timestep_idx = 2;
+		static double steps[] = { 0.001, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5 };
+		static const char* timestep_opts[] = { "0.001", "0.01", "0.025", "0.05", "0.1", "0.2", "0.5" };
 		render_combo("Time Step", timestep_opts, IM_ARRAYSIZE(timestep_opts), &timestep_idx);
 		g_sim_timestep = steps[timestep_idx];
 

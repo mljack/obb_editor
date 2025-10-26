@@ -4,12 +4,15 @@
 #include <vector>
 #include <set>
 #include <functional>
+#include <algorithm>
 
 #include <glm/vec2.hpp>
 using vec2d = glm::dvec2;
 using vec2f = glm::vec2;
 
 #include "marker.h"
+
+extern double g_max_particle_radius;
 
 struct TrajPt {
 	TrajPt(double t1, const vec2d& pos1) {
@@ -21,8 +24,13 @@ struct TrajPt {
 struct Particle {
 	Particle() {}
 	void set(double t, int id1, int color_idx1, double radius1, double mass1, const vec2d& pos1, const vec2d& vel1, const vec2d& accel1) {
-		id = id1; color_idx = color_idx1;  radius = radius1;  mass = mass1;  pos = pos1;
+		id = id1; color_idx = color_idx1; mass = mass1;  pos = pos1;
 		vel = vel1; accel = accel1;
+		set_radius(radius1);
+	}
+	void set_radius(double radius1) {
+		radius = radius1;
+		g_max_particle_radius = std::max(g_max_particle_radius, radius1);
 	}
 	void set_solution(std::function<void(double, vec2d*, vec2d*, vec2d*)> s) {
 		solution = s;
@@ -110,7 +118,6 @@ public:
 private:
 	// Container boundary variables
 	int num_of_particles;
-	double particle_radius;
 	double container_min_x;
 	double container_min_y;
 	double container_max_x;

@@ -28,6 +28,7 @@ std::vector<std::vector<vec2d>> g_env;  ///< Environment boundaries
 std::vector<std::shared_ptr<Field>> g_fields;       ///< Force fields affecting particles
 std::vector<Particle> g_particles;  ///< Simulated particles
 std::vector<float> g_t_array, g_energy_array; ///< Energy tracking arrays
+double g_max_particle_radius = 0.00001;
 
 // Speed distribution statistics global variables
 std::vector<int> g_speed_hist;
@@ -325,6 +326,8 @@ void run_one_simulation_step(double timestep, int method_idx) {
 				E += field->compute_potential(p.pos);
 			}
 		}
+		if (isnan(E))
+			printf("Found NaN for the particle %d\n", p.id);
 	}
 
 	auto t4 = std::chrono::high_resolution_clock::now();
@@ -532,11 +535,11 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	hole_max_y = center_y + wall_width / 2;
 
 	num_of_particles = 20000;
-	particle_radius = 0.2;
+	double particle_radius = 0.2;
 
 	// Clear existing force fields (no gravity in this simulation)
 	g_fields.clear();
-	//g_fields.push_back(std::make_shared<GravityOnEarth>());
+	g_fields.push_back(std::make_shared<GravityOnEarth>());
 
 	// Define a rectangular container boundary
 	g_env.clear();
@@ -561,9 +564,9 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 
 	// Set up random number generators for particle positions and velocities
 	std::default_random_engine generator(1234);       // Fixed seed for reproducibility
-	std::uniform_real_distribution<double> x_dist(container_min_x + 0.1, (container_min_x + container_max_x) / 2 - wall_width * 2);
-	std::uniform_real_distribution<double> x_dist2((container_min_x + container_max_x) / 2 + wall_width * 2, container_max_x - 0.1);
-	std::uniform_real_distribution<double> y_dist(container_min_y + 0.1, container_max_y - 0.1);
+	std::uniform_real_distribution<double> x_dist(container_min_x + 0.1, (container_min_x + container_max_x) / 2 - wall_width / 2 - 0.1);
+	std::uniform_real_distribution<double> x_dist2((container_min_x + container_max_x) / 2 + wall_width / 2 + 0.1, container_max_x - 0.1);
+	std::uniform_real_distribution<double> y_dist(center_y + 0.1, container_max_y - 0.1);
 	std::uniform_real_distribution<double> vel_dist(-5.0, 5.0);
 
 	markers->clear();
@@ -577,7 +580,7 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 		double y = y_dist(generator);
 		double vx = vel_dist(generator);
 		double vy = vel_dist(generator);
-		if (idx % 4 == 0)
+		if (idx % 2 == 0)
 			g_particles[idx].set(g_sim_time, idx, /*color_idx=*/0, particle_radius, /*mass=*/1.0, vec2d(x,  y), vec2d(vx, vy), vec2d(0.0, 0.0));
 		else
 			g_particles[idx].set(g_sim_time, idx, /*color_idx=*/2, particle_radius, /*mass=*/1.0, vec2d(x2, y), vec2d(vx, vy), vec2d(0.0, 0.0));
@@ -586,18 +589,30 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	g_particles.back().show_trajectory = true;
 	Particle p;
 	p.show_trajectory = true;
-	p.set(g_sim_time, g_particles.size(), /*color_idx=*/1, particle_radius * 10, /*mass=*/30.0,
-		vec2d((container_min_x + container_max_x) / 2, (container_min_y + container_max_y) / 2),
-		vec2d(0.0, 0.0), vec2d(0.0, 0.0));
+	p.set(g_sim_time, g_particles.size(), /*color_idx=*/1, particle_radius * 10, /*mass=*/30.0, vec2d(center_x, center_y), vec2d(0.0, 0.0), vec2d(0.0, 0.0));
+
+	p.pos.x = center_x - 150.0;
+	p.pos.y = center_y - 100.0;
+	p.set_radius(20.0);
+	p.mass = p.radius * p.radius * glm::pi<double>() * 0.01;
 	g_particles.push_back(p);
-	p.pos.x -= 100.0;
-	p.pos.y -= 100.0;
+
+	p.pos.x = center_x - 70.0;
+	p.pos.y = center_y - 100.0;
+	p.set_radius(20.0);
+	p.mass = p.radius * p.radius * glm::pi<double>() * 0.1;
 	g_particles.push_back(p);
-	p.pos.x += 200.0;
+
+	p.pos.x = center_x + 70.0;
+	p.pos.y = center_y - 100.0;
+	p.set_radius(20.0);
+	p.mass = p.radius * p.radius * glm::pi<double>() * 0.5;
 	g_particles.push_back(p);
-	p.pos.y += 200.0;
-	g_particles.push_back(p);
-	p.pos.x -= 200.0;
+
+	p.pos.x = center_x + 150.0;
+	p.pos.y = center_y - 100.0;
+	p.set_radius(20.0);
+	p.mass = p.radius * p.radius * glm::pi<double>() * 0.9;
 	g_particles.push_back(p);
 }
 
@@ -611,24 +626,24 @@ void RarefiedGas::handle_boundary() {
 	// Check each particle against container walls
 	for (auto& p : g_particles) {
 		// Left and right walls - reflect x-velocity
-		if ((p.pos.x < container_min_x && p.vel.x < 0.0) || (p.pos.x > container_max_x && p.vel.x > 0.0)) {
+		if ((p.pos.x < container_min_x + p.radius && p.vel.x < 0.0) || (p.pos.x > container_max_x - p.radius && p.vel.x > 0.0)) {
 			p.vel.x *= -1;
 			p.is_colliding = true;
 		}
 		// Bottom and top walls - reflect y-velocity
-		if ((p.pos.y < container_min_y && p.vel.y < 0.0) || (p.pos.y > container_max_y && p.vel.y > 0.0)) {
+		if ((p.pos.y < container_min_y + p.radius && p.vel.y < 0.0) || (p.pos.y > container_max_y - p.radius && p.vel.y > 0.0)) {
 			p.vel.y *= -1;
 			p.is_colliding = true;
 		}
 
-		if (p.pos.x > wall_min_x && p.pos.x < wall_max_x && (p.pos.y < hole_min_y || p.pos.y > hole_max_y)) {
-			double min_y = std::min(std::abs(p.pos.y - hole_min_y), std::abs(p.pos.y - hole_max_y));
-			double min_x = std::min(std::abs(p.pos.x - wall_min_x), std::abs(p.pos.x - wall_max_x));
+		if (p.pos.x > wall_min_x - p.radius && p.pos.x < wall_max_x + p.radius && (p.pos.y < hole_min_y + p.radius || p.pos.y > hole_max_y - p.radius)) {
+			double min_y = std::min(std::abs(p.pos.y - (hole_min_y + p.radius)), std::abs(p.pos.y - (hole_max_y - p.radius)));
+			double min_x = std::min(std::abs(p.pos.x - (wall_min_x - p.radius)), std::abs(p.pos.x - (wall_max_x + p.radius)));
 			if (min_x < min_y) {
-				if ((p.pos.x > wall_min_x && p.vel.x < 0.0) || (p.pos.x < wall_max_x && p.vel.x > 0.0))
+				if ((p.pos.x > wall_min_x - p.radius && p.vel.x < 0.0) || (p.pos.x < wall_max_x + p.radius && p.vel.x > 0.0))
 					p.vel.x *= -1;
 			} else {
-				if ((p.pos.y < hole_min_y && p.vel.y < 0.0) || (p.pos.y > hole_max_y && p.vel.y > 0.0))
+				if ((p.pos.y < hole_min_y + p.radius && p.vel.y < 0.0) || (p.pos.y > hole_max_y - p.radius && p.vel.y > 0.0))
 					p.vel.y *= -1;
 			}
 			p.is_colliding = true;
@@ -652,7 +667,7 @@ void RarefiedGas::handle_collision() {
 	double container_width = container_max_x - container_min_x;
 	double container_height = container_max_y - container_min_y;
 	// Adaptive grid size: ensures grid is at least particle diameter and constains at least one particle when distributes particles evenly
-	double grid_size = std::max(particle_radius * 2, std::sqrt(container_width * container_height / num_of_particles));
+	double grid_size = std::max(g_max_particle_radius * 2, std::sqrt(container_width * container_height / num_of_particles));
 	// printf("grid_size: %f, max_grid_x: %f\n", grid_size, container_width / grid_size);
 	// Factor to combine grid_x and grid_y into a unique key (power of 2 for fast multiplication)
 	int grid_width_factor = 1024;
