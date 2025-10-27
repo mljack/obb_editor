@@ -790,13 +790,14 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 	glm::vec3 c[] = { red, yellow, blue, green };
 	float z = 10.0f;
 	for (auto& p : particles) {
-		std::array<glm::vec2, 4> pts = {
-			p.pos - glm::dvec2(p.radius, 0.0f),
-			p.pos - glm::dvec2(0.0f, p.radius),
-			p.pos + glm::dvec2(p.radius, 0.0f),
-			p.pos + glm::dvec2(0.0f, p.radius),
-		};
 		GLuint base_idx = (GLuint)v_buf->size() / 7;
+		std::vector<glm::vec2> pts;
+		int n = p.radius < 3 ? 4 : std::round(p.radius);
+		for (int i = 0; i <= n; ++i) {
+			double a = glm::pi<double>() * 2 * i / n;
+			pts.push_back(p.pos + p.radius * glm::dvec2(std::cos(a), std::sin(a)));
+			idx_buf->push_back(base_idx + i % (n + 1)); idx_buf->push_back(base_idx + (i + 1) % (n + 1));
+		}
 		for (auto& pt : pts) {
 			v_buf->push_back(pt.x);
 			v_buf->push_back(g_image_height - pt.y);
@@ -807,10 +808,6 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 				v_buf->push_back(c[p.color_idx].x); v_buf->push_back(c[p.color_idx].y); v_buf->push_back(c[p.color_idx].z); v_buf->push_back(1.0f);
 			}
 		}
-		idx_buf->push_back(base_idx + 0); idx_buf->push_back(base_idx + 1);
-		idx_buf->push_back(base_idx + 1); idx_buf->push_back(base_idx + 2);
-		idx_buf->push_back(base_idx + 2); idx_buf->push_back(base_idx + 3);
-		idx_buf->push_back(base_idx + 3); idx_buf->push_back(base_idx + 0);
 
 		if (g_show_trajectories || p.show_trajectory) {
 			GLuint base_idx2 = (GLuint)v_buf->size() / 7;

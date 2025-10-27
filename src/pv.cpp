@@ -536,7 +536,7 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	hole_min_y = center_y - wall_width / 2;
 	hole_max_y = center_y + wall_width / 2;
 
-	num_of_particles = 100000;
+	num_of_particles = 40000;
 	double particle_radius = 0.1;
 
 	// Clear existing force fields (no gravity in this simulation)
