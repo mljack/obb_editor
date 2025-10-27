@@ -16,6 +16,8 @@
 
 #include <random>
 #include <chrono>
+#include <thread>
+#include <mutex>
 
 /**
  * @brief Global simulation variables
@@ -534,8 +536,8 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	hole_min_y = center_y - wall_width / 2;
 	hole_max_y = center_y + wall_width / 2;
 
-	num_of_particles = 20000;
-	double particle_radius = 0.2;
+	num_of_particles = 100000;
+	double particle_radius = 0.1;
 
 	// Clear existing force fields (no gravity in this simulation)
 	g_fields.clear();
@@ -694,70 +696,108 @@ void RarefiedGas::handle_collision() {
 		grid[key].push_back(i);
 	}
 
-	// For each particle, check collisions with particles in the same grid and neighboring grids
-	for (int i = 0; i < g_particles.size(); ++i) {
-		auto& p = g_particles[i];
-		
-		// Check current grid cell and all 8 neighboring cells
-		for (int dy = -1; dy <= 1; ++dy) {
-			for (int dx = -1; dx <= 1; ++dx) {
-				// Calculate neighboring grid cell coordinates
-				int grid_x = static_cast<int>((p.pos.x - this->container_min_x) / grid_size) + dx;
-				int grid_y = static_cast<int>((p.pos.y - this->container_min_y) / grid_size) + dy;
-				
-				// Check if the neighboring grid cell is within bounds
-				if (grid_x < 0 || grid_x >= static_cast<int>(container_width / grid_size) ||
-					grid_y < 0 || grid_y >= static_cast<int>(container_height / grid_size))
-					continue;
+	// Determine number of threads to use (use hardware concurrency if available)
+	int num_threads = std::max(4U, std::thread::hardware_concurrency());
+	
+	// Create a vector to store thread objects
+	std::vector<std::thread> threads;
+	
+	// Create a vector of mutexes to protect particle velocity updates
+	// Each particle has its own mutex to ensure thread safety
+	std::vector<std::mutex> particle_mutexes(g_particles.size());
+	
+	// Function to handle collisions for a range of particles
+	auto handle_collision_range = [&](int start_idx, int end_idx) {
+		for (int i = start_idx; i < end_idx; ++i) {
+			auto& p = g_particles[i];
+			
+			// Check current grid cell and all 8 neighboring cells
+			for (int dy = -1; dy <= 1; ++dy) {
+				for (int dx = -1; dx <= 1; ++dx) {
+					// Calculate neighboring grid cell coordinates
+					int grid_x = static_cast<int>((p.pos.x - this->container_min_x) / grid_size) + dx;
+					int grid_y = static_cast<int>((p.pos.y - this->container_min_y) / grid_size) + dy;
 					
-				// Get key for neighboring grid cell
-				int neighbor_key = grid_y * grid_width_factor + grid_x;
-					
-				// Check if the neighboring grid cell exists
-				auto it = grid.find(neighbor_key);
-				if (it == grid.end())
-					continue;
+					// Check if the neighboring grid cell is within bounds
+					if (grid_x < 0 || grid_x >= static_cast<int>(container_width / grid_size) ||
+						grid_y < 0 || grid_y >= static_cast<int>(container_height / grid_size))
+						continue;
+						
+					// Get key for neighboring grid cell
+					int neighbor_key = grid_y * grid_width_factor + grid_x;
+						
+					// Check if the neighboring grid cell exists
+					auto it = grid.find(neighbor_key);
+					if (it == grid.end())
+						continue;
 
-				// Check collisions with all particles in the neighboring grid cell
-				for (int j : it->second) {
-					// Avoid checking the same pair twice (i < j)
-					if (i >= j)
-						continue;
+					// Check collisions with all particles in the neighboring grid cell
+					for (int j : it->second) {
+						// Avoid checking the same pair twice (i < j)
+						if (i >= j)
+							continue;
 							
-					// Check collision between particles i and j
-					vec2d diff = g_particles[i].pos - g_particles[j].pos;
-					double dist2 = glm::dot(diff, diff);
-					double R = g_particles[i].radius + g_particles[j].radius;
+						// Check collision between particles i and j
+						vec2d diff = g_particles[i].pos - g_particles[j].pos;
+						double dist2 = glm::dot(diff, diff);
+						double R = g_particles[i].radius + g_particles[j].radius;
 							
-					if (dist2 > R * R)
-						continue;
-	
-					// Calculate relative velocity vector
-					vec2d rel_vel = g_particles[j].vel - g_particles[i].vel;
-								
-					// Calculate relative velocity along normal direction
-					double rel_vn = glm::dot(rel_vel, diff);
-								
-					// Only process if particles are approaching each other
-					if (rel_vn < 0.0)
-						continue;
-	
-					g_particles[i].is_colliding = true;
-					g_particles[j].is_colliding = true;
-	
-					double m1 = g_particles[i].mass;
-					double m2 = g_particles[j].mass;
-									 
-					// Calculate impulse scalar for elastic collision
-					// Formula: j = 2 * m1 * m2 * rel_vn / (m1 + m2)
-					double impulse = (2.0 * m1 * m2 * rel_vn) / (m1 + m2);
-									
-					// Update velocities using impulse and normal
-					g_particles[i].vel += (impulse / m1) * diff / dist2;
-					g_particles[j].vel -= (impulse / m2) * diff / dist2;
+						if (dist2 > R * R)
+							continue;
+
+						// Calculate relative velocity vector
+						vec2d rel_vel = g_particles[j].vel - g_particles[i].vel;
+							
+						// Calculate relative velocity along normal direction
+						double rel_vn = glm::dot(rel_vel, diff);
+							
+						// Only process if particles are approaching each other
+						if (rel_vn < 0.0)
+							continue;
+
+						// Set collision flags (no need for mutex as we're only setting to true)
+						g_particles[i].is_colliding = true;
+						g_particles[j].is_colliding = true;
+
+						double m1 = g_particles[i].mass;
+						double m2 = g_particles[j].mass;
+							 
+						// Calculate impulse scalar for elastic collision
+						// Formula: j = 2 * m1 * m2 * rel_vn / (m1 + m2)
+						double impulse = (2.0 * m1 * m2 * rel_vn) / (m1 + m2);
+							
+						// Calculate velocity changes before acquiring locks
+						vec2d delta_v_i = (impulse / m1) * diff / dist2;
+						vec2d delta_v_j = -(impulse / m2) * diff / dist2;
+						
+						// Use a consistent locking order to prevent deadlocks
+						// Always lock the particle with the smaller index first
+						// (i < j is guaranteed by earlier check)
+						std::lock_guard<std::mutex> lock_i(particle_mutexes[i]);
+						std::lock_guard<std::mutex> lock_j(particle_mutexes[j]);
+						// Update velocities using impulse and normal
+						g_particles[i].vel += delta_v_i;
+						g_particles[j].vel += delta_v_j;
+					}
 				}
 			}
 		}
+	};
+	
+	// Calculate the number of particles per thread
+	int particles_per_thread = (g_particles.size() + num_threads - 1) / num_threads;
+	
+	// Launch threads to handle different ranges of particles
+	for (int t = 0; t < num_threads; ++t) {
+		int start_idx = t * particles_per_thread;
+		int end_idx = (t == num_threads - 1) ? g_particles.size() : (t + 1) * particles_per_thread;
+		threads.emplace_back(handle_collision_range, start_idx, end_idx);
+	}
+	
+	// Wait for all threads to complete
+	for (auto& thread : threads) {
+		if (thread.joinable())
+			thread.join();
 	}
 }
 
