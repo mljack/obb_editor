@@ -75,16 +75,27 @@ set(HEADERS
 add_executable(obb_editor ${SOURCE} ${HEADERS})
 
 if(MSVC)
-	target_link_libraries(obb_editor
-		${SDL2_LIBRARIES}
-		opengl32.lib
-		${PROJECT_SOURCE_DIR}/third_party/glew/lib/Release/Win32/glew32.lib
-	)
-
-	set(DLLS
-		${CMAKE_SOURCE_DIR}/third_party/glew/bin/Release/Win32/glew32.dll
-		${CMAKE_SOURCE_DIR}/third_party/SDL2/lib/x86/SDL2.dll
-	)
+	if ("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "x64")
+		target_link_libraries(obb_editor
+			${SDL2_LIBRARIES}
+			opengl32.lib
+			${PROJECT_SOURCE_DIR}/third_party/glew/lib/Release/x64/glew32.lib
+		)
+		set(DLLS
+			${CMAKE_SOURCE_DIR}/third_party/glew/bin/Release/x64/glew32.dll
+			${CMAKE_SOURCE_DIR}/third_party/SDL2/lib/x64/SDL2.dll
+		)
+	else()
+		target_link_libraries(obb_editor
+			${SDL2_LIBRARIES}
+			opengl32.lib
+			${PROJECT_SOURCE_DIR}/third_party/glew/lib/Release/Win32/glew32.lib
+		)
+		set(DLLS
+			${CMAKE_SOURCE_DIR}/third_party/glew/bin/Release/Win32/glew32.dll
+			${CMAKE_SOURCE_DIR}/third_party/SDL2/lib/x86/SDL2.dll
+		)
+	endif()
 
 	foreach(file_i ${DLLS})
 		add_custom_command(TARGET obb_editor POST_BUILD COMMAND ${CMAKE_COMMAND}
