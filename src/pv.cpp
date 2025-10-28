@@ -16,7 +16,6 @@
 
 #include <random>
 #include <chrono>
-#include <thread>
 #include <mutex>
 
 /**
@@ -157,187 +156,196 @@ void compute_accel() {
  *        5 = Taylor (2nd order) + Explicit Trapezoid
  *        6 = Velocity Verlet
  */
-void run_one_simulation_step(double timestep, int method_idx) {
-	auto t0 = std::chrono::high_resolution_clock::now();
+void step_one_particle(double timestep, int method_idx, Particle& p) {
+	p.accel = vec2d(0.0, 0.0);
+	for (auto& field : g_fields)
+		p.accel += field->compute_accel(p.pos, p.vel);
+
 	if (method_idx == 0) { 	// Forward Euler method (explicit)
-		//printf("Forward Euler \n");
-		compute_accel();  // Calculate accelerations at current state
-		for (auto& p : g_particles) {
-			p.pos += timestep * p.vel;  // Update position
-			p.vel += timestep * p.accel;  // Update velocity
-		}
-	} else if (method_idx == 1) { 	// Backward Euler method (implicit)
-		//printf("Backward Euler \n");
-		compute_accel();  // Initial acceleration
-		
+		p.pos += timestep * p.vel;  // Update position
+		p.vel += timestep * p.accel;  // Update velocity
+	}
+	else if (method_idx == 1) { 	// Backward Euler method (implicit)
 		// Initial prediction
-		for (auto& p : g_particles) {
-			p.pos_predicted = p.pos + timestep * p.vel;
-			p.vel_predicted = p.vel + timestep * p.accel;
-		}
-		
+		p.pos_predicted = p.pos + timestep * p.vel;
+		p.vel_predicted = p.vel + timestep * p.accel;
+
 		// Newton-Raphson iteration to solve implicit equations
 		for (int i = 0; i < 10; ++i) {
 			// Calculate accelerations at predicted state
-			for (auto& p : g_particles) {
-				p.accel_predicted = vec2d(0.0, 0.0);
-				for (auto& field : g_fields) {
-					p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
-				}
+			p.accel_predicted = vec2d(0.0, 0.0);
+			for (auto& field : g_fields) {
+				p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
 			}
-			
+
 			// Refine predictions
 			for (auto& p : g_particles) {
 				p.pos_predicted = p.pos + timestep * p.vel_predicted;
 				p.vel_predicted = p.vel + timestep * p.accel_predicted;
 			}
 		}
-		
+
 		// Apply the final predictions
-		for (auto& p : g_particles) {
-			p.pos += timestep * p.vel_predicted;
-			p.vel += timestep * p.accel_predicted;
-		}
+		p.pos += timestep * p.vel_predicted;
+		p.vel += timestep * p.accel_predicted;
 	}
 	else if (method_idx == 2) {	// Implicit Trapezoid method
-		//printf("Implicit Trapezoid \n");
-		compute_accel();
-		
 		// Initial prediction
-		for (auto& p : g_particles) {
-			p.pos_predicted = p.pos + timestep * p.vel;
-			p.vel_predicted = p.vel + timestep * p.accel;
-		}
-		
+		p.pos_predicted = p.pos + timestep * p.vel;
+		p.vel_predicted = p.vel + timestep * p.accel;
+
 		// Iterative solution for implicit equations
 		for (int i = 0; i < 10; ++i) {
 			// Calculate accelerations at predicted state
-			for (auto& p : g_particles) {
-				p.accel_predicted = vec2d(0.0, 0.0);
-				for (auto& field : g_fields) {
-					p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
-				}
+			p.accel_predicted = vec2d(0.0, 0.0);
+			for (auto& field : g_fields) {
+				p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
 			}
-			
+
 			// Refine predictions
 			for (auto& p : g_particles) {
 				p.pos_predicted = p.pos + timestep * p.vel_predicted;
 				p.vel_predicted = p.vel + timestep * p.accel_predicted;
 			}
 		}
-		
+
 		// Apply trapezoidal update using average of current and predicted
-		for (auto& p : g_particles) {
-			p.pos += timestep * 0.5 * (p.vel + p.vel_predicted);
-			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
-		}
-	} else if (method_idx == 3) {	// Explicit Trapezoid method
-	 //printf("Explicit Trapezoid \n");
-		compute_accel();
-		
-		// Predict new state using Euler
-		for (auto& p : g_particles) {
-			p.pos_predicted = p.pos + timestep * p.vel;
-			p.vel_predicted = p.vel + timestep * p.accel;
-		}
-		
-		// Calculate acceleration at predicted state
-		for (auto& p : g_particles) {
-			p.accel_predicted = vec2d(0.0, 0.0);
-			for (auto& field : g_fields) {
-				p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
-			}
-		}
-		
-		// Apply trapezoidal update (no iteration)
-		for (auto& p : g_particles) {
-			p.pos += timestep * 0.5 * (p.vel + p.vel_predicted);
-			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
-		}
-	} else if (method_idx == 4) {	// Taylor series method (2nd order)
-		//printf("Taylor (2nd order) \n");
-		compute_accel();
-		
-		// Update using Taylor expansion to 2nd order
-		for (auto& p : g_particles) {
-			p.pos += timestep * (p.vel + 0.5 * timestep * p.accel);
-			p.vel += timestep * p.accel;
-		}
-	} else if (method_idx == 5) {	// Combined Taylor + Explicit Trapezoid method
-		//printf("Taylor (2nd order) + Explicit Trapezoid \n");
-		compute_accel();
-		
-		// Initial prediction using Taylor method
-		for (auto& p : g_particles) {
-			p.pos_predicted = p.pos + timestep * (p.vel + 0.5 * timestep * p.accel);
-			p.vel_predicted = p.vel + timestep * p.accel;
-		}
-		
-		// Calculate acceleration at predicted state
-		for (auto& p : g_particles) {
-			p.accel_predicted = vec2d(0.0, 0.0);
-			for (auto& field : g_fields) {
-				p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
-			}
-		}
-		
-		// Apply combined update
-		for (auto& p : g_particles) {
-			p.pos += timestep * (p.vel + 0.25 * timestep * (p.accel + p.accel_predicted));
-			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
-		}
-	} else if (method_idx == 6) {	// Velocity Verlet method
-		//printf("Velocity Verlet \n");
-		compute_accel();
-		
-		// Update position and predict velocity
-		for (auto& p : g_particles) {
-			p.pos += timestep * (p.vel + 0.5 * timestep * p.accel);
-			p.vel_predicted = p.vel + timestep * p.accel;
-		}
-		
-		// Calculate new acceleration at updated position
-		for (auto& p : g_particles) {
-			p.accel_predicted = vec2d(0.0, 0.0);
-			for (auto& field : g_fields) {
-				p.accel_predicted += field->compute_accel(p.pos, p.vel_predicted);
-			}
-		}
-		
-		// Correct velocity using average acceleration
-		for (auto& p : g_particles) {
-			p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
-		}
+		p.pos += timestep * 0.5 * (p.vel + p.vel_predicted);
+		p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
 	}
+	else if (method_idx == 3) {	// Explicit Trapezoid method
+		// Predict new state using Euler
+		p.pos_predicted = p.pos + timestep * p.vel;
+		p.vel_predicted = p.vel + timestep * p.accel;
+
+		// Calculate acceleration at predicted state
+		p.accel_predicted = vec2d(0.0, 0.0);
+		for (auto& field : g_fields) {
+			p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
+		}
+
+		// Apply trapezoidal update (no iteration)
+		p.pos += timestep * 0.5 * (p.vel + p.vel_predicted);
+		p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+	}
+	else if (method_idx == 4) {	// Taylor series method (2nd order)
+		// Update using Taylor expansion to 2nd order
+		p.pos += timestep * (p.vel + 0.5 * timestep * p.accel);
+		p.vel += timestep * p.accel;
+	}
+	else if (method_idx == 5) {	// Combined Taylor + Explicit Trapezoid method
+		// Initial prediction using Taylor method
+		p.pos_predicted = p.pos + timestep * (p.vel + 0.5 * timestep * p.accel);
+		p.vel_predicted = p.vel + timestep * p.accel;
+
+		// Calculate acceleration at predicted state
+		p.accel_predicted = vec2d(0.0, 0.0);
+		for (auto& field : g_fields) {
+			p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
+		}
+
+		// Apply combined update
+		p.pos += timestep * (p.vel + 0.25 * timestep * (p.accel + p.accel_predicted));
+		p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+	}
+	else if (method_idx == 6) {	// Velocity Verlet method
+		// Update position and predict velocity
+		p.pos += timestep * (p.vel + 0.5 * timestep * p.accel);
+		p.vel_predicted = p.vel + timestep * p.accel;
+
+		// Calculate new acceleration at updated position
+		p.accel_predicted = vec2d(0.0, 0.0);
+		for (auto& field : g_fields) {
+			p.accel_predicted += field->compute_accel(p.pos, p.vel_predicted);
+		}
+
+		// Correct velocity using average acceleration
+		p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+	}
+}
+
+void run_one_simulation_step(double timestep, int method_idx) {
+	if (!g_problem)
+		return;
+
+	int num_threads = std::max(4U, std::thread::hardware_concurrency());
+	int particles_per_thread = (g_particles.size() + num_threads - 1) / num_threads;
+	g_problem->num_threads = num_threads;
+	g_problem->particles_per_thread = particles_per_thread;
+	auto& threads = g_problem->threads;
+	auto& thread_histograms = g_problem->thread_histograms;
+	
+	auto t0 = std::chrono::high_resolution_clock::now();
+
+	for (int t = 0; t < num_threads; ++t) {
+		threads.emplace_back([&, timestep, method_idx, t]() {
+			int start_idx = t * particles_per_thread;
+			int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
+			for (int i = start_idx; i < end_idx; ++i) {
+				step_one_particle(timestep, method_idx, g_particles[i]);
+			}
+		});
+	}
+
+	// Wait for all threads to complete
+	for (auto& thread : threads) {
+		if (thread.joinable())
+			thread.join();
+	}
+	threads.clear();
+
 	auto t1 = std::chrono::high_resolution_clock::now();
 
-	if (g_problem)
-		g_problem->handle_collision();
+	g_problem->handle_collision();
 
 	auto t2 = std::chrono::high_resolution_clock::now();
 
-	if (g_problem)
-		g_problem->handle_boundary();
+	g_problem->handle_boundary();
 
 	auto t3 = std::chrono::high_resolution_clock::now();
 
-	for (auto& p : g_particles)
-		if (g_show_trajectories || p.show_trajectory)
-			p.traj.emplace_back(g_sim_time, p.pos);
+	// Pre-allocate storage for thread-local results
+	std::vector<double> thread_E(num_threads, 0.0);
+	for (int t = 0; t < num_threads; ++t) {
+		threads.emplace_back([&, t]() {
+			int start_idx = t * particles_per_thread;
+			int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
+			double local_E = 0.0;
+
+			for (int i = start_idx; i < end_idx; ++i) {
+				auto& p = g_particles[i];
+
+				if (g_show_trajectories || p.show_trajectory)
+					p.traj.emplace_back(g_sim_time, p.pos);
+
+				if (p.solution) {
+					p.solution(g_sim_time + timestep, &p.pos, &p.vel, &p.accel);
+				}
+				else {
+					local_E += 0.5 * p.mass * glm::dot(p.vel, p.vel);
+					for (auto& field : g_fields) {
+						local_E += field->compute_potential(p.pos) * p.mass;
+					}
+				}
+				if (isnan(local_E))
+					printf("Found NaN for the particle %d\n", p.id);
+			}
+			thread_E[t] = local_E;
+		});
+	}
+
+	// Wait for all threads to complete first phase (max speed calculation)
+	for (auto& thread : threads) {
+		if (thread.joinable())
+			thread.join();
+	}
+	threads.clear();
 
 	double E = 0.0;
-	for (auto& p : g_particles) {
-		if (p.solution) {
-			p.solution(g_sim_time + timestep, &p.pos, &p.vel, &p.accel);
-		} else {
-			E += 0.5 * p.mass * glm::dot(p.vel, p.vel);
-			for (auto& field : g_fields) {
-				E += field->compute_potential(p.pos) * p.mass;
-			}
-		}
-		if (isnan(E))
-			printf("Found NaN for the particle %d\n", p.id);
-	}
+	for (double e : thread_E)
+		E += e;
+
+	auto t4 = std::chrono::high_resolution_clock::now();
 
 	if (isnan(E)) {
 		g_simulating = false;
@@ -347,10 +355,41 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		g_energy_array.push_back(E);
 
 		if (g_show_stats) {
-			// Update maximum speed of all particles
+			// Pre-allocate storage for thread-local results
+			std::vector<double> thread_max_speeds(num_threads, 0.0);
+			thread_histograms.resize(num_threads);;
+
+			// Launch threads to compute both max speed and histogram in a single pass
+			for (int t = 0; t < num_threads; ++t) {
+				threads.emplace_back([&, t]() {
+					int start_idx = t * particles_per_thread;
+					int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
+					double local_max = 0.0;
+					
+					for (int i = start_idx; i < end_idx; ++i) {
+						const auto& p = g_particles[i];
+						double speed = glm::length(p.vel);
+						// Update local maximum speed
+						local_max = std::max(local_max, speed);
+					}
+					
+					// Store thread's maximum speed
+					thread_max_speeds[t] = local_max;
+				});
+			}
+			
+			// Wait for all threads to complete first phase (max speed calculation)
+			for (auto& thread : threads) {
+				if (thread.joinable())
+					thread.join();
+			}
+			threads.clear();
+			
+			// Find global maximum speed
 			double max_speed = 0.0;
-			for (const auto& p : g_particles)
-				max_speed = std::max(max_speed, glm::length(p.vel));
+			for (double s : thread_max_speeds) {
+				max_speed = std::max(max_speed, s);
+			}
 
 			// Add a small buffer (20%) to ensure all particles are visible
 			g_max_speed = max_speed * 1.2;
@@ -359,30 +398,54 @@ void run_one_simulation_step(double timestep, int method_idx) {
 				g_max_speed = 0.1;
 			}
 
-			// Calculate speed distribution
-			g_speed_hist.assign(SPEED_BINS, 0);
-			for (const auto& p : g_particles) {
-				// Calculate speed (velocity magnitude)
-				double speed = glm::length(p.vel);
+			// Second phase: Calculate speed distribution in parallel
+			for (int t = 0; t < num_threads; ++t) {\
+				threads.emplace_back([&, t]() {
+					int start_idx = t * particles_per_thread;
+					int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
+					thread_histograms[t].assign(SPEED_BINS, 0);
+					for (int i = start_idx; i < end_idx; ++i) {
+						const auto& p = g_particles[i];
+						// Calculate speed (velocity magnitude)
+						double speed = glm::length(p.vel);
 
-				// Map speed to histogram bin
-				int bin = static_cast<int>((speed / g_max_speed) * SPEED_BINS);
-				bin = std::max(0, std::min(bin, SPEED_BINS - 1));
-				g_speed_hist[bin]++;
+						// Map speed to histogram bin
+						int bin = static_cast<int>((speed / g_max_speed) * SPEED_BINS);
+						bin = std::max(0, std::min(bin, SPEED_BINS - 1));
+						thread_histograms[t][bin]++;
+					}
+				});
+			}
+			
+			// Wait for all threads to complete second phase
+			for (auto& thread : threads) {
+				if (thread.joinable())
+					thread.join();
+			}
+			threads.clear();
+
+			// Merge thread-local histograms into the main histogram
+			g_speed_hist.assign(SPEED_BINS, 0);
+			for (int t = 0; t < num_threads; ++t) {
+				for (int b = 0; b < SPEED_BINS; ++b) {
+					g_speed_hist[b] += thread_histograms[t][b];
+				}
 			}
 		}
 	}
 
-	auto t4 = std::chrono::high_resolution_clock::now();
+	auto t5 = std::chrono::high_resolution_clock::now();
 	double time_integrator = std::chrono::duration<double, std::milli>(t1 - t0).count();
 	double time_collision = std::chrono::duration<double, std::milli>(t2 - t1).count();
 	double time_boundary = std::chrono::duration<double, std::milli>(t3 - t2).count();
 	double time_energy = std::chrono::duration<double, std::milli>(t4 - t3).count();
+	double time_hist = std::chrono::duration<double, std::milli>(t5 - t4).count();
 	double time_build_grid = std::chrono::duration<double, std::milli>(tt1 - tt0).count();
 	double time_pos_filter = std::chrono::duration<double, std::milli>(tt2 - tt1).count();
 	double time_collision_pair = std::chrono::duration<double, std::milli>(tt3 - tt2).count();
 
-	printf("integrator: %.2f, collision: %.2f(init: %.1f, filter: %.1f, resolve: %.1f), boundary: %.2f, energy: %.2f\n", time_integrator, time_collision, time_build_grid, time_pos_filter, time_collision_pair, time_boundary, time_energy);
+	printf("integrator: %.2f, collision: %.2f(init: %.1f, filter: %.1f, resolve: %.1f), boundary: %.2f, energy: %.2f, hist: %.2f\n",
+		time_integrator, time_collision, time_build_grid, time_pos_filter, time_collision_pair, time_boundary, time_energy, time_hist);
 }
 
 /**
@@ -434,6 +497,17 @@ void seek_to_sim_time_moment(double t, std::map<int, Marker>* markers) {
 	}
 }
 
+void Problem::init(std::map<int, Marker>* markers) {
+	tt0 = std::chrono::high_resolution_clock::now();
+	tt1 = tt0;
+	tt2 = tt0;
+	tt3 = tt0;
+
+	g_fields.clear();
+	g_env.clear();
+	g_max_particle_radius = 0.00001;
+}
+
 /**
  * @brief Initializes the planet orbit simulation
  * 
@@ -443,8 +517,8 @@ void seek_to_sim_time_moment(double t, std::map<int, Marker>* markers) {
  * @param markers Pointer to map of markers to be initialized
  */
 void PlanetOrbit::init(std::map<int, Marker>* markers) {
-	// Clear existing force fields
-	g_fields.clear();
+	Problem::init(markers);
+
 	// Create a central gravitational field at (800, -600)
 	g_fields.push_back(std::make_shared<GravityInSpace>(vec2d(800.0, -600.0)));
 	
@@ -454,8 +528,7 @@ void PlanetOrbit::init(std::map<int, Marker>* markers) {
 	m1.y = -600.0f;   // Same y-coordinate as center
 	m1.vy = -30.0f;   // Initial velocity to create circular orbit
 
-	// Clear and initialize environment
-	g_env.clear();
+	//Initialize environment
 	g_env.push_back(std::vector<vec2d>());
 	g_env.back().push_back(vec2d(800.0, -600.0));  // Center point
 
@@ -489,8 +562,8 @@ void PlanetOrbit::init(std::map<int, Marker>* markers) {
  * @param markers Pointer to map of markers to be initialized
  */
 void BadmintonClearShot::init(std::map<int, Marker>* markers) {
-	// Clear existing force fields
-	g_fields.clear();
+	Problem::init(markers);
+
 	// Add Earth's gravity
 	g_fields.push_back(std::make_shared<GravityOnEarth>());
 	// Add air resistance
@@ -511,7 +584,6 @@ void BadmintonClearShot::init(std::map<int, Marker>* markers) {
 	m2.vy = -90.0f;   // Higher upward velocity
 
 	// Define ground boundary
-	g_env.clear();
 	g_env.push_back(std::vector<vec2d>());
 	g_env.back().push_back(vec2d(0.0, -600.0));    // Left ground point
 	g_env.back().push_back(vec2d(1500.0, -600.0));  // Right ground point
@@ -536,6 +608,8 @@ void BadmintonClearShot::init(std::map<int, Marker>* markers) {
  * @param markers Pointer to map of markers to be initialized
  */
 void RarefiedGas::init(std::map<int, Marker>* markers) {
+	Problem::init(markers);
+
 	// Initialize boundary variables
 	container_min_x = 600.0;
 	container_max_x = 1000.0;
@@ -552,12 +626,9 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	num_of_particles = 1000000;
 	double particle_radius = 0.03;
 
-	// Clear existing force fields (no gravity in this simulation)
-	g_fields.clear();
 	g_fields.push_back(std::make_shared<GravityOnEarth>());
 
 	// Define a rectangular container boundary
-	g_env.clear();
 	g_env.push_back(std::vector<vec2d>());
 	g_env.back().push_back(vec2d(container_min_x, container_max_y));    // Top-left
 	g_env.back().push_back(vec2d(container_max_x, container_max_y));   // Top-right
@@ -638,33 +709,47 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
  * Reverses the appropriate velocity component when a particle is heading toward a boundary.
  */
 void RarefiedGas::handle_boundary() {
-	// Check each particle against container walls
-	for (auto& p : g_particles) {
-		// Left and right walls - reflect x-velocity
-		if ((p.pos.x < container_min_x + p.radius && p.vel.x < 0.0) || (p.pos.x > container_max_x - p.radius && p.vel.x > 0.0)) {
-			p.vel.x *= -1;
-			p.is_colliding = true;
-		}
-		// Bottom and top walls - reflect y-velocity
-		if ((p.pos.y < container_min_y + p.radius && p.vel.y < 0.0) || (p.pos.y > container_max_y - p.radius && p.vel.y > 0.0)) {
-			p.vel.y *= -1;
-			p.is_colliding = true;
-		}
+	// Multi-threaded boundary collision detection
+	for (int t = 0; t < num_threads; ++t) {
+		threads.emplace_back([this, t]() {
+			int start_idx = t * particles_per_thread;
+			int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
 
-		if (p.pos.x > wall_min_x - p.radius && p.pos.x < wall_max_x + p.radius && (p.pos.y < hole_min_y + p.radius || p.pos.y > hole_max_y - p.radius)) {
-			double min_y = std::min(std::abs(p.pos.y - (hole_min_y + p.radius)), std::abs(p.pos.y - (hole_max_y - p.radius)));
-			double min_x = std::min(std::abs(p.pos.x - (wall_min_x - p.radius)), std::abs(p.pos.x - (wall_max_x + p.radius)));
-			if (min_x < min_y) {
-				if ((p.pos.x > wall_min_x - p.radius && p.vel.x < 0.0) || (p.pos.x < wall_max_x + p.radius && p.vel.x > 0.0))
+			for (int i = start_idx; i < end_idx; ++i) {
+				auto& p = g_particles[i];
+				// Left and right walls - reflect x-velocity
+				if ((p.pos.x < container_min_x + p.radius && p.vel.x < 0.0) || (p.pos.x > container_max_x - p.radius && p.vel.x > 0.0)) {
 					p.vel.x *= -1;
-			} else {
-				if ((p.pos.y < hole_min_y + p.radius && p.vel.y < 0.0) || (p.pos.y > hole_max_y - p.radius && p.vel.y > 0.0))
+					p.is_colliding = true;
+				}
+				// Bottom and top walls - reflect y-velocity
+				if ((p.pos.y < container_min_y + p.radius && p.vel.y < 0.0) || (p.pos.y > container_max_y - p.radius && p.vel.y > 0.0)) {
 					p.vel.y *= -1;
-			}
-			p.is_colliding = true;
-		}
+					p.is_colliding = true;
+				}
 
+				if (p.pos.x > wall_min_x - p.radius && p.pos.x < wall_max_x + p.radius && (p.pos.y < hole_min_y + p.radius || p.pos.y > hole_max_y - p.radius)) {
+					double min_y = std::min(std::abs(p.pos.y - (hole_min_y + p.radius)), std::abs(p.pos.y - (hole_max_y - p.radius)));
+					double min_x = std::min(std::abs(p.pos.x - (wall_min_x - p.radius)), std::abs(p.pos.x - (wall_max_x + p.radius)));
+					if (min_x < min_y) {
+						if ((p.pos.x > wall_min_x - p.radius && p.vel.x < 0.0) || (p.pos.x < wall_max_x + p.radius && p.vel.x > 0.0))
+							p.vel.x *= -1;
+					} else {
+						if ((p.pos.y < hole_min_y + p.radius && p.vel.y < 0.0) || (p.pos.y > hole_max_y - p.radius && p.vel.y > 0.0))
+							p.vel.y *= -1;
+					}
+					p.is_colliding = true;
+				}
+			}
+		});
 	}
+
+	// Wait for all threads to complete
+	for (auto& thread : threads) {
+		if (thread.joinable())
+			thread.join();
+	}
+	threads.clear();
 }
 
 /**
@@ -711,7 +796,8 @@ void RarefiedGas::handle_collision() {
 		get_grid_xy(p.pos.x, p.pos.y, &grid_x, &grid_y);
 		if (p.radius <= g_max_particle_radius) {
 			grid[grid_y * grid_x_count + grid_x].push_back(i);
-		} else {
+		}
+		else {
 			int k = std::ceil(p.radius / grid_size);
 			for (int dy = -k; dy <= k; ++dy)
 				for (int dx = -k; dx <= k; ++dx)
@@ -720,14 +806,8 @@ void RarefiedGas::handle_collision() {
 		}
 	}
 
-	// Determine number of threads to use (use hardware concurrency if available)
-	int num_threads = std::max(4U, std::thread::hardware_concurrency());
-
 	// Pre-allocate storage for each thread to store found potential collision pairs
 	thread_collision_pairs.resize(num_threads);
-
-	// Create a vector to store thread objects
-	std::vector<std::thread> threads;
 
 	// Step 1: Concurrent filtering of potential collision pairs
 	auto collect_potential_collisions = [&](int thread_idx, int start_idx, int end_idx) {
@@ -778,13 +858,10 @@ void RarefiedGas::handle_collision() {
 	
 	tt1 = std::chrono::high_resolution_clock::now();
 
-	// Calculate the number of particles per thread
-	int particles_per_thread = (g_particles.size() + num_threads - 1) / num_threads;
-	
 	// Launch threads to collect potential collision pairs
 	for (int t = 0; t < num_threads; ++t) {
 		int start_idx = t * particles_per_thread;
-		int end_idx = (t == num_threads - 1) ? g_particles.size() : (t + 1) * particles_per_thread;
+		int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
 		// Pass thread index so the thread knows which pre-allocated storage to use
 		threads.emplace_back(collect_potential_collisions, t, start_idx, end_idx);
 	}
@@ -794,6 +871,7 @@ void RarefiedGas::handle_collision() {
 		if (thread.joinable())
 			thread.join();
 	}
+	threads.clear();
 
 	tt2 = std::chrono::high_resolution_clock::now();
 

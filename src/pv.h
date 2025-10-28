@@ -5,6 +5,7 @@
 #include <set>
 #include <functional>
 #include <algorithm>
+#include <thread>
 
 #include <glm/vec2.hpp>
 using vec2d = glm::dvec2;
@@ -95,10 +96,14 @@ void update_max_speed();
 class Problem {
 public:
 	virtual ~Problem() {}
-	virtual void init(std::map<int, Marker>* markers) = 0;
+	virtual void init(std::map<int, Marker>* markers);
 	virtual void handle_boundary() {};
 	virtual void handle_collision() {};
 	virtual void destory() {};
+	int num_threads = 1;
+	int particles_per_thread = 0;
+	std::vector<std::thread> threads;
+	std::vector<std::vector<int>> thread_histograms;
 };
 
 class PlanetOrbit : public Problem {
