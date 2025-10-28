@@ -678,11 +678,11 @@ void RarefiedGas::handle_collision() {
 	double container_width = container_max_x - container_min_x;
 	double container_height = container_max_y - container_min_y;
 	// Adaptive grid size: ensures grid is at least particle diameter and constains at least one particle when distributes particles evenly
-	double grid_size = std::max(g_max_particle_radius * 2, std::sqrt(container_width * container_height / num_of_particles));
+	double grid_size = std::max(g_max_particle_radius * 2, 0.5 * std::sqrt(container_width * container_height / num_of_particles));
 	int grid_x_count = static_cast<int>(container_width / grid_size);
 	int grid_y_count = static_cast<int>(container_height / grid_size);
 	int grid_count = grid_x_count * grid_x_count;
-	printf("grid_size: %f, max_grid_x: %f, grid_count: %d\n", grid_size, container_width / grid_size, grid_count);
+	//printf("grid_size: %f, max_grid_x: %f, grid_count: %d\n", grid_size, container_width / grid_size, grid_count);
 	
 	// Function to get grid key from particle position
 	auto get_grid_xy = [&](double x, double y, int* grid_x, int* grid_y) -> void {
