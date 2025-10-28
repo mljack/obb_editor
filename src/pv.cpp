@@ -22,10 +22,12 @@
 /**
  * @brief Global simulation variables
  */
-extern double g_sim_time;          ///< Current simulation time
-extern bool g_simulating;          ///< Whether simulation is running
-extern std::map<int, Marker> g_markers; ///< Markers for UI visualization
-extern bool g_show_trajectories;   ///< Whether to show particle trajectories
+extern double g_sim_time;
+extern bool g_simulating;
+extern std::map<int, Marker> g_markers;
+extern bool g_show_trajectories;
+extern bool g_show_stats;
+
 std::vector<std::vector<vec2d>> g_env;  ///< Environment boundaries
 std::vector<std::shared_ptr<Field>> g_fields;       ///< Force fields affecting particles
 std::vector<Particle> g_particles;  ///< Simulated particles
@@ -36,6 +38,11 @@ double g_max_particle_radius = 0.00001;
 std::vector<int> g_speed_hist;
 const int SPEED_BINS = 200;
 double g_max_speed = 20.0; // Dynamic maximum speed
+
+std::chrono::time_point<std::chrono::high_resolution_clock> tt0 = std::chrono::high_resolution_clock::now();
+auto tt1 = tt0;
+auto tt2 = tt1;
+auto tt3 = tt2;
 
 /**
  * @brief Default acceleration function
@@ -59,7 +66,7 @@ vec2d GravityOnEarth::compute_accel(const vec2d& pos, const vec2d& vel) {
 }
 
 double GravityOnEarth::compute_potential(const vec2d& pos) {
-	return 9.8 * (pos.y - 0.0);  // Gravitational potential energy relative to y=0
+	return 9.8 * (-pos.y - 600.0);  // Gravitational potential energy relative to y=-600
 }
 
 /**
@@ -325,19 +332,12 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		} else {
 			E += 0.5 * p.mass * glm::dot(p.vel, p.vel);
 			for (auto& field : g_fields) {
-				E += field->compute_potential(p.pos);
+				E += field->compute_potential(p.pos) * p.mass;
 			}
 		}
 		if (isnan(E))
 			printf("Found NaN for the particle %d\n", p.id);
 	}
-
-	auto t4 = std::chrono::high_resolution_clock::now();
-	double time_integrator = std::chrono::duration<double, std::milli>(t1 - t0).count();
-	double time_collision = std::chrono::duration<double, std::milli>(t2 - t1).count();
-	double time_boundary = std::chrono::duration<double, std::milli>(t3 - t2).count();
-	double time_energy = std::chrono::duration<double, std::milli>(t4 - t3).count();
-	printf("integrator: %.2f, collision: %.2f, boundary: %.2f, energy: %.2f\n", time_integrator, time_collision, time_boundary, time_energy);
 
 	if (isnan(E)) {
 		g_simulating = false;
@@ -346,30 +346,43 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		g_t_array.push_back(g_sim_time);
 		g_energy_array.push_back(E);
 
-		// Update maximum speed of all particles
-		double max_speed = 0.0;
-		for (const auto& p : g_particles)
-			max_speed = std::max(max_speed, glm::length(p.vel));
+		if (g_show_stats) {
+			// Update maximum speed of all particles
+			double max_speed = 0.0;
+			for (const auto& p : g_particles)
+				max_speed = std::max(max_speed, glm::length(p.vel));
 
-		// Add a small buffer (20%) to ensure all particles are visible
-		g_max_speed = max_speed * 1.2;
-		// Ensure minimum value to avoid empty plots
-		if (g_max_speed < 0.1) {
-			g_max_speed = 0.1;
-		}
-		
-		// Calculate speed distribution
-		g_speed_hist.assign(SPEED_BINS, 0);
-		for (const auto& p : g_particles) {
-			// Calculate speed (velocity magnitude)
-			double speed = glm::length(p.vel);
-			
-			// Map speed to histogram bin
-			int bin = static_cast<int>((speed / g_max_speed) * SPEED_BINS);
-			bin = std::max(0, std::min(bin, SPEED_BINS - 1));
-			g_speed_hist[bin]++;
+			// Add a small buffer (20%) to ensure all particles are visible
+			g_max_speed = max_speed * 1.2;
+			// Ensure minimum value to avoid empty plots
+			if (g_max_speed < 0.1) {
+				g_max_speed = 0.1;
+			}
+
+			// Calculate speed distribution
+			g_speed_hist.assign(SPEED_BINS, 0);
+			for (const auto& p : g_particles) {
+				// Calculate speed (velocity magnitude)
+				double speed = glm::length(p.vel);
+
+				// Map speed to histogram bin
+				int bin = static_cast<int>((speed / g_max_speed) * SPEED_BINS);
+				bin = std::max(0, std::min(bin, SPEED_BINS - 1));
+				g_speed_hist[bin]++;
+			}
 		}
 	}
+
+	auto t4 = std::chrono::high_resolution_clock::now();
+	double time_integrator = std::chrono::duration<double, std::milli>(t1 - t0).count();
+	double time_collision = std::chrono::duration<double, std::milli>(t2 - t1).count();
+	double time_boundary = std::chrono::duration<double, std::milli>(t3 - t2).count();
+	double time_energy = std::chrono::duration<double, std::milli>(t4 - t3).count();
+	double time_build_grid = std::chrono::duration<double, std::milli>(tt1 - tt0).count();
+	double time_pos_filter = std::chrono::duration<double, std::milli>(tt2 - tt1).count();
+	double time_collision_pair = std::chrono::duration<double, std::milli>(tt3 - tt2).count();
+
+	printf("integrator: %.2f, collision: %.2f(init: %.1f, filter: %.1f, resolve: %.1f), boundary: %.2f, energy: %.2f\n", time_integrator, time_collision, time_build_grid, time_pos_filter, time_collision_pair, time_boundary, time_energy);
 }
 
 /**
@@ -536,8 +549,8 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	hole_min_y = center_y - wall_width / 2;
 	hole_max_y = center_y + wall_width / 2;
 
-	num_of_particles = 40000;
-	double particle_radius = 0.1;
+	num_of_particles = 1000000;
+	double particle_radius = 0.03;
 
 	// Clear existing force fields (no gravity in this simulation)
 	g_fields.clear();
@@ -568,8 +581,8 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	std::default_random_engine generator(1234);       // Fixed seed for reproducibility
 	std::uniform_real_distribution<double> x_dist(container_min_x + 0.1, (container_min_x + container_max_x) / 2 - wall_width / 2 - 0.1);
 	std::uniform_real_distribution<double> x_dist2((container_min_x + container_max_x) / 2 + wall_width / 2 + 0.1, container_max_x - 0.1);
-	std::uniform_real_distribution<double> y_dist(center_y + 0.1, container_max_y - 0.1);
-	std::uniform_real_distribution<double> vel_dist(-5.0, 5.0);
+	std::uniform_real_distribution<double> y_dist(center_y + 150, container_max_y - 0.1);
+	std::uniform_real_distribution<double> vel_dist(-50.0, 50.0);
 
 	markers->clear();
 
@@ -583,38 +596,38 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 		double vx = vel_dist(generator);
 		double vy = vel_dist(generator);
 		if (idx % 2 == 0)
-			g_particles[idx].set(g_sim_time, idx, /*color_idx=*/0, particle_radius, /*mass=*/1.0, vec2d(x,  y), vec2d(vx, vy), vec2d(0.0, 0.0));
+			g_particles[idx].set(g_sim_time, idx, /*color_idx=*/0, particle_radius, /*mass=*/particle_radius * particle_radius * glm::pi<double>(), vec2d(x,  y), vec2d(vx, vy), vec2d(0.0, 0.0));
 		else
-			g_particles[idx].set(g_sim_time, idx, /*color_idx=*/2, particle_radius, /*mass=*/1.0, vec2d(x2, y), vec2d(vx, vy), vec2d(0.0, 0.0));
+			g_particles[idx].set(g_sim_time, idx, /*color_idx=*/2, particle_radius, /*mass=*/particle_radius * particle_radius * glm::pi<double>(), vec2d(x2, y), vec2d(vx, vy), vec2d(0.0, 0.0));
 	}
 
 	g_particles.back().show_trajectory = true;
 	Particle p;
+	p.set(g_sim_time, g_particles.size(), /*color_idx=*/1, particle_radius, /*mass=*/p.radius * p.radius * glm::pi<double>(), vec2d(center_x, center_y), vec2d(0.0, 0.0), vec2d(0.0, 0.0));
+	p.is_vip = true;
+	p.radius = 20.0;
 	p.show_trajectory = true;
-	p.set(g_sim_time, g_particles.size(), /*color_idx=*/1, particle_radius * 10, /*mass=*/30.0, vec2d(center_x, center_y), vec2d(0.0, 0.0), vec2d(0.0, 0.0));
+
+	double air_ratio = 0.1;
 
 	p.pos.x = center_x - 150.0;
-	p.pos.y = center_y - 100.0;
-	p.set_radius(20.0);
-	p.mass = p.radius * p.radius * glm::pi<double>() * 0.01;
+	p.pos.y = center_y + 50.0;
+	p.mass = p.radius * p.radius * glm::pi<double>() * air_ratio * 0.01;
 	g_particles.push_back(p);
 
 	p.pos.x = center_x - 70.0;
-	p.pos.y = center_y - 100.0;
-	p.set_radius(20.0);
-	p.mass = p.radius * p.radius * glm::pi<double>() * 0.1;
+	p.pos.y = center_y + 50.0;
+	p.mass = p.radius * p.radius * glm::pi<double>() * air_ratio * 0.1;
 	g_particles.push_back(p);
 
 	p.pos.x = center_x + 70.0;
-	p.pos.y = center_y - 100.0;
-	p.set_radius(20.0);
-	p.mass = p.radius * p.radius * glm::pi<double>() * 0.5;
+	p.pos.y = center_y + 50.0;
+	p.mass = p.radius * p.radius * glm::pi<double>() * air_ratio * 0.5;
 	g_particles.push_back(p);
 
 	p.pos.x = center_x + 150.0;
-	p.pos.y = center_y - 100.0;
-	p.set_radius(20.0);
-	p.mass = p.radius * p.radius * glm::pi<double>() * 0.9;
+	p.pos.y = center_y + 50.0;
+	p.mass = p.radius * p.radius * glm::pi<double>() * air_ratio * 1.0;
 	g_particles.push_back(p);
 }
 
@@ -661,53 +674,67 @@ void RarefiedGas::handle_boundary() {
 	* are conserved during interactions.
 	*/
 void RarefiedGas::handle_collision() {
-	// Reset collision flags for all particles
-	for (auto& p : g_particles)
-		p.is_colliding = false;
- 
 	// Space partitioning optimization using grid system
 	double container_width = container_max_x - container_min_x;
 	double container_height = container_max_y - container_min_y;
 	// Adaptive grid size: ensures grid is at least particle diameter and constains at least one particle when distributes particles evenly
 	double grid_size = std::max(g_max_particle_radius * 2, std::sqrt(container_width * container_height / num_of_particles));
-	// printf("grid_size: %f, max_grid_x: %f\n", grid_size, container_width / grid_size);
-	// Factor to combine grid_x and grid_y into a unique key (power of 2 for fast multiplication)
-	int grid_width_factor = 1024;
-	
-	// Create grid: map from grid coordinates to list of particle indices
-	std::unordered_map<int, std::vector<int>> grid;
+	int grid_x_count = static_cast<int>(container_width / grid_size);
+	int grid_y_count = static_cast<int>(container_height / grid_size);
+	int grid_count = grid_x_count * grid_x_count;
+	printf("grid_size: %f, max_grid_x: %f, grid_count: %d\n", grid_size, container_width / grid_size, grid_count);
 	
 	// Function to get grid key from particle position
-	auto get_grid_key = [&](double x, double y) -> int {
+	auto get_grid_xy = [&](double x, double y, int* grid_x, int* grid_y) -> void {
 		// Convert world coordinates to grid coordinates
-		int grid_x = static_cast<int>((x - this->container_min_x) / grid_size);
-		int grid_y = static_cast<int>((y - this->container_min_y) / grid_size);
+		*grid_x = static_cast<int>((x - this->container_min_x) / grid_size);
+		*grid_y = static_cast<int>((y - this->container_min_y) / grid_size);
 		// Ensure grid coordinates are within bounds
-		grid_x = std::max(0, std::min(grid_x, static_cast<int>(container_width / grid_size) - 1));
-		grid_y = std::max(0, std::min(grid_y, static_cast<int>(container_height / grid_size) - 1));
-		// Create a unique key for the grid cell
-		return grid_y * grid_width_factor + grid_x;
+		*grid_x = std::max(0, std::min(*grid_x, grid_x_count - 1));
+		*grid_y = std::max(0, std::min(*grid_y, grid_y_count - 1));
 	};
  
+	tt0 = std::chrono::high_resolution_clock::now();
+
+	// Create grid: map from grid coordinates to list of particle indices
+	grid.resize(grid_count);
+	for (auto& cell : grid) {
+		cell.clear();
+		cell.reserve(num_of_particles / grid_count);
+	}
+
 	// Populate the grid with particle indices
 	for (int i = 0; i < g_particles.size(); ++i) {
 		auto& p = g_particles[i];
-		int key = get_grid_key(p.pos.x, p.pos.y);
-		grid[key].push_back(i);
+		p.is_colliding = false;
+		int grid_x, grid_y;
+		get_grid_xy(p.pos.x, p.pos.y, &grid_x, &grid_y);
+		if (p.radius <= g_max_particle_radius) {
+			grid[grid_y * grid_x_count + grid_x].push_back(i);
+		} else {
+			int k = std::ceil(p.radius / grid_size);
+			for (int dy = -k; dy <= k; ++dy)
+				for (int dx = -k; dx <= k; ++dx)
+					if (grid_x + dx >= 0 && grid_x + dx < grid_x_count && grid_y + dy >= 0 && grid_y + dy < grid_y_count)
+						grid[(grid_y + dy) * grid_x_count + (grid_x + dx)].push_back(-i);
+		}
 	}
 
 	// Determine number of threads to use (use hardware concurrency if available)
 	int num_threads = std::max(4U, std::thread::hardware_concurrency());
-	
+
+	// Pre-allocate storage for each thread to store found potential collision pairs
+	thread_collision_pairs.resize(num_threads);
+
 	// Create a vector to store thread objects
 	std::vector<std::thread> threads;
-	
-	// Create a vector of mutexes to protect particle velocity updates
-	// Each particle has its own mutex to ensure thread safety
-	std::vector<std::mutex> particle_mutexes(g_particles.size());
-	
-	// Function to handle collisions for a range of particles
-	auto handle_collision_range = [&](int start_idx, int end_idx) {
+
+	// Step 1: Concurrent filtering of potential collision pairs
+	auto collect_potential_collisions = [&](int thread_idx, int start_idx, int end_idx) {
+		// Get the collision pair collection corresponding to the current thread
+		auto& local_pairs = thread_collision_pairs[thread_idx];
+		local_pairs.clear(); // Clear storage
+
 		for (int i = start_idx; i < end_idx; ++i) {
 			auto& p = g_particles[i];
 			
@@ -724,80 +751,112 @@ void RarefiedGas::handle_collision() {
 						continue;
 						
 					// Get key for neighboring grid cell
-					int neighbor_key = grid_y * grid_width_factor + grid_x;
+					int neighbor_key = grid_y * grid_x_count + grid_x;
 						
-					// Check if the neighboring grid cell exists
-					auto it = grid.find(neighbor_key);
-					if (it == grid.end())
-						continue;
-
 					// Check collisions with all particles in the neighboring grid cell
-					for (int j : it->second) {
+					for (int j : grid[neighbor_key]) {
+						bool shadowed = (j < 0);
+						j = std::abs(j);
+
 						// Avoid checking the same pair twice (i < j)
 						if (i >= j)
 							continue;
-							
+
 						// Check collision between particles i and j
 						vec2d diff = g_particles[i].pos - g_particles[j].pos;
 						double dist2 = glm::dot(diff, diff);
 						double R = g_particles[i].radius + g_particles[j].radius;
 							
-						if (dist2 > R * R)
-							continue;
-
-						// Calculate relative velocity vector
-						vec2d rel_vel = g_particles[j].vel - g_particles[i].vel;
-							
-						// Calculate relative velocity along normal direction
-						double rel_vn = glm::dot(rel_vel, diff);
-							
-						// Only process if particles are approaching each other
-						if (rel_vn < 0.0)
-							continue;
-
-						// Set collision flags (no need for mutex as we're only setting to true)
-						g_particles[i].is_colliding = true;
-						g_particles[j].is_colliding = true;
-
-						double m1 = g_particles[i].mass;
-						double m2 = g_particles[j].mass;
-							 
-						// Calculate impulse scalar for elastic collision
-						// Formula: j = 2 * m1 * m2 * rel_vn / (m1 + m2)
-						double impulse = (2.0 * m1 * m2 * rel_vn) / (m1 + m2);
-							
-						// Calculate velocity changes before acquiring locks
-						vec2d delta_v_i = (impulse / m1) * diff / dist2;
-						vec2d delta_v_j = -(impulse / m2) * diff / dist2;
-						
-						// Use a consistent locking order to prevent deadlocks
-						// Always lock the particle with the smaller index first
-						// (i < j is guaranteed by earlier check)
-						std::lock_guard<std::mutex> lock_i(particle_mutexes[i]);
-						std::lock_guard<std::mutex> lock_j(particle_mutexes[j]);
-						// Update velocities using impulse and normal
-						g_particles[i].vel += delta_v_i;
-						g_particles[j].vel += delta_v_j;
+						// Only save particle pairs that might collide (distance less than sum of radii)
+						if (dist2 <= R * R)
+							local_pairs.push_back({ i, j, dist2, diff, shadowed });
 					}
 				}
 			}
 		}
 	};
 	
+	tt1 = std::chrono::high_resolution_clock::now();
+
 	// Calculate the number of particles per thread
 	int particles_per_thread = (g_particles.size() + num_threads - 1) / num_threads;
 	
-	// Launch threads to handle different ranges of particles
+	// Launch threads to collect potential collision pairs
 	for (int t = 0; t < num_threads; ++t) {
 		int start_idx = t * particles_per_thread;
 		int end_idx = (t == num_threads - 1) ? g_particles.size() : (t + 1) * particles_per_thread;
-		threads.emplace_back(handle_collision_range, start_idx, end_idx);
+		// Pass thread index so the thread knows which pre-allocated storage to use
+		threads.emplace_back(collect_potential_collisions, t, start_idx, end_idx);
 	}
 	
-	// Wait for all threads to complete
+	// Wait for all threads to complete their collection work
 	for (auto& thread : threads) {
 		if (thread.joinable())
 			thread.join();
 	}
+
+	tt2 = std::chrono::high_resolution_clock::now();
+
+	// Step 2: Sequential processing of all potential collision pairs
+	int total_pairs = 0;
+	int actual_collisions = 0;
+	std::set<std::pair<int, int>> shadowed_pairs;
+	// Iterate through collision pairs collected by all threads
+	for (int t = 0; t < num_threads; ++t) {
+		total_pairs += thread_collision_pairs[t].size();
+		
+		// Process each potential collision pair collected by the current thread
+		for (const auto& pair : thread_collision_pairs[t]) {
+			int i = pair.i;
+			int j = pair.j;
+			if (pair.shadowed) {
+				auto item = std::make_pair(i, j);
+				if (shadowed_pairs.count(item) > 0)
+					continue;
+				else {
+					shadowed_pairs.insert(item);
+				}
+			}
+			
+			// Avoid numerical instability caused by division by zero or very small values
+			const double min_dist2 = 1e-12;
+			if (pair.dist2 < min_dist2)
+				continue;
+			
+			// Calculate relative velocity (using latest particle states)
+			vec2d rel_vel = g_particles[j].vel - g_particles[i].vel;
+			
+			// Calculate normal relative velocity component
+			double rel_vn = glm::dot(rel_vel, pair.diff);
+			
+			// Only process particles that are approaching each other
+			if (rel_vn < 0.0)
+				continue;
+			
+			// Set collision flags
+			g_particles[i].is_colliding = true;
+			g_particles[j].is_colliding = true;
+			
+			// Get particle masses
+			double m1 = g_particles[i].mass;
+			double m2 = g_particles[j].mass;
+			 
+			// Calculate impulse scalar for elastic collision
+			double impulse = (2.0 * m1 * m2 * rel_vn) / (m1 + m2);
+				
+			// Calculate velocity changes
+			vec2d delta_v_i = (impulse / m1) * pair.diff / pair.dist2;
+			vec2d delta_v_j = -(impulse / m2) * pair.diff / pair.dist2;
+			
+			// Update velocities (sequential processing, no locks needed)
+			g_particles[i].vel += delta_v_i;
+			g_particles[j].vel += delta_v_j;
+			
+			actual_collisions++;
+		}
+	}
+
+	tt3 = std::chrono::high_resolution_clock::now();
+	//printf("\tpairs: %d/%d = %.1f%%\n", actual_collisions, total_pairs, (double)actual_collisions / total_pairs * 100.0);
 }
 

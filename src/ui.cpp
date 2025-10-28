@@ -36,6 +36,8 @@ extern double g_sim_time;
 extern double g_sim_timestep;
 extern int g_sim_substeps;
 extern int g_integrator_idx;
+extern bool g_show_stats;
+extern bool g_downsample;
 extern std::map<int, Marker> g_markers;
 
 void load_background(const std::string& file_path);
@@ -371,6 +373,7 @@ void render_simulation_settings() {
 			g_simulating = false;
 			g_replaying_sim = false;
 			sim_time_f = 0.0f;
+			g_sim_time = 0.0;
 			max_time = 0.0;
 			g_particles.clear();
 			g_t_array.clear();
@@ -386,27 +389,9 @@ void render_simulation_settings() {
 			for (auto& p : g_particles)
 				p.traj.clear();
 		}
-		if (ImGui::Button("Clear Trajectories")) {
-			g_simulating = false;
-			g_replaying_sim = false;
-			g_particles.clear();
-			g_t_array.clear();
-			g_energy_array.clear();
-			g_sim_time = 0.0;
-			max_time = 0.0f;
-		}
 		ImGui::SameLine();
-		if (ImGui::Button("Clear Particles")) {
-			g_simulating = false;
-			g_replaying_sim = false;
-			g_markers.clear();
-			g_particles.clear();
-			g_t_array.clear();
-			g_energy_array.clear();
-			g_marker = nullptr;
-			g_sim_time = 0.0;
-			max_time = 0.0f;
-		}
+		ImGui::Checkbox("Show Statistics", &g_show_stats);
+		ImGui::Checkbox("Downsample Particles to 10%", &g_downsample);
 		sim_time_f = (float)g_sim_time;
 		if (ImGui::SliderFloat("Sim Time", &sim_time_f, 0.0f, max_time, "%.4f")) {
 			seek_to_sim_time_moment(sim_time_f, &g_markers);
@@ -526,5 +511,6 @@ void render_plots() {
 void render_ui() {
 	render_side_bar();
 	render_simulation_settings();
-	render_plots();
+	if (g_show_stats)
+		render_plots();
 }

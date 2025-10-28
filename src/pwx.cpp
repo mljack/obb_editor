@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file pwx.cpp
  * @brief Mathematical utilities for solving rotated parabola problems and cubic equations
  * 
@@ -429,12 +429,12 @@ bool solve3(std::vector<double>* rr, double k1, double k2, double k3) {
     u0 = cplx(sign(A.real()) * std::pow(std::abs(A.real()), 1.0 / 3.0), 0.0);
   }
 
-  //// 如果 u0 太接近 0（数值不稳定），可改为从 B 取根再反算 u0
+  //// If u0 is too close to 0 (numerically unstable), can take root from B and recalculate u0
   //if (std::abs(u0) < 1e-16) {
   //  cplx B = cplx(-q / 2.0, 0.0) - sqrtD;
   //  cplx v0temp = std::pow(B, 1.0 / 3.0);
   //  if (std::abs(v0temp) < 1e-16) {
-  //    // 极端退化情况，退回用简单方法（y=0的近似）
+  //    // Extreme degenerate case, fall back to simple method (y=0 approximation)
   //    u0 = cplx(0.0, 0.0);
   //  }
   //  else {

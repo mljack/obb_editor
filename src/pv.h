@@ -47,6 +47,7 @@ struct Particle {
 	vec2d accel_predicted;
 	bool is_colliding = false;
 	bool show_trajectory = false;
+	bool is_vip = false;
 	std::vector<TrajPt> traj;
 	std::function<void(double, vec2d*, vec2d*, vec2d*)> solution = nullptr;
 };
@@ -110,6 +111,14 @@ public:
 	void init(std::map<int, Marker>* markers) override;
 };
 
+// Define potential collision pair structure
+struct CollisionPair {
+	int i, j;
+	double dist2;
+	vec2d diff;
+	bool shadowed;
+};
+
 class RarefiedGas : public Problem {
 public:
 	void init(std::map<int, Marker>* markers) override;
@@ -129,6 +138,8 @@ private:
 	double wall_max_x;
 	double hole_min_y;
 	double hole_max_y;
+	std::vector<std::vector<int>> grid;
+	std::vector<std::vector<CollisionPair>> thread_collision_pairs;
 };
 
 extern std::unique_ptr<Problem> g_problem;

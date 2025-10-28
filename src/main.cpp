@@ -144,6 +144,8 @@ double g_sim_time = 0.0;
 bool g_simulating = false;
 bool g_replaying_sim = false;
 int g_integrator_idx = 0;
+bool g_show_stats = false;
+bool g_downsample = true;
 
 Marker* g_marker = nullptr;
 std::unique_ptr<Problem> g_problem = nullptr;
@@ -790,6 +792,9 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 	glm::vec3 c[] = { red, yellow, blue, green };
 	float z = 10.0f;
 	for (auto& p : particles) {
+		size_t idx = &p - particles.data();
+		if (!p.is_vip && g_downsample && idx % 20 != 0 && idx % 20 != 1)
+			continue;
 		GLuint base_idx = (GLuint)v_buf->size() / 7;
 		std::vector<glm::vec2> pts;
 		int n = p.radius < 3 ? 4 : std::round(p.radius);
