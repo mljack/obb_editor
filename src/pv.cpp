@@ -750,7 +750,10 @@ void RarefiedGas::handle_collision() {
 			p.grid_xy = p.grid_y * grid_x_count + p.grid_x;
 			if (p.radius <= g_max_particle_radius) {
 				std::lock_guard<std::mutex> lock(m[p.grid_xy % m.size()]);
-				grid[p.grid_xy].push_back(i);
+				auto& cell = grid[p.grid_xy];
+				auto it = std::lower_bound(cell.begin(), cell.end(), i,
+					[](int idx_a, int idx_b) {return std::abs(idx_a) > std::abs(idx_b); });
+				cell.insert(it, i);
 			}
 			else {
 				// Handle large particles
@@ -762,7 +765,10 @@ void RarefiedGas::handle_collision() {
 						if (grid_x >= 0 && grid_x < grid_x_count && grid_y >= 0 && grid_y < grid_y_count) {
 							int grid_xy = grid_y * grid_x_count + grid_x;
 							std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
-							grid[grid_xy].push_back(-i);
+							auto& cell = grid[grid_xy];
+							auto it = std::lower_bound(cell.begin(), cell.end(), -i,
+								[](int idx_a, int idx_b) {return std::abs(idx_a) > std::abs(idx_b); });
+							cell.insert(it, -i);
 						}
 					}
 				}
@@ -809,7 +815,7 @@ void RarefiedGas::handle_collision() {
 
 							// Avoid checking the same pair twice (i < j)
 							if (i >= j)
-								continue;
+								break;
 
 							// Check collision between particles i and j
 							vec2d diff = g_particles[i].pos - g_particles[j].pos;
@@ -825,7 +831,7 @@ void RarefiedGas::handle_collision() {
 			}
 			
 			if (!local_pairs.empty())
-				tbb_local_pairs.push_back(local_pairs);
+				tbb_local_pairs.emplace_back(local_pairs);
 
 			//auto ttt2 = std::chrono::high_resolution_clock::now();
 			//double time = std::chrono::duration<double, std::milli>(tt3 - tt2).count();
@@ -853,6 +859,8 @@ void RarefiedGas::handle_collision() {
 					shadowed_pairs.insert(item);
 				}
 			}
+
+			//total_pairs++;
 			
 			// Avoid numerical instability caused by division by zero or very small values
 			const double min_dist2 = 1e-12;
@@ -888,7 +896,7 @@ void RarefiedGas::handle_collision() {
 			g_particles[i].vel += delta_v_i;
 			g_particles[j].vel += delta_v_j;
 			
-			actual_collisions++;
+			//actual_collisions++;
 		}
 	}
 

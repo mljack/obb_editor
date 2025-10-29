@@ -797,7 +797,7 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 			continue;
 		GLuint base_idx = (GLuint)v_buf->size() / 7;
 		std::vector<glm::vec2> pts;
-		int n = p.radius < 3 ? 4 : std::round(p.radius);
+		int n = std::max(4, static_cast<int>(std::round(p.radius)));
 		for (int i = 0; i <= n; ++i) {
 			double a = glm::pi<double>() * 2 * i / n;
 			pts.push_back(p.pos + p.radius * glm::dvec2(std::cos(a), std::sin(a)));
