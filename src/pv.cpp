@@ -18,6 +18,11 @@
 #include <chrono>
 #include <mutex>
 
+#include <tbb/parallel_reduce.h>
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#include <tbb/concurrent_vector.h>
+
 /**
  * @brief Global simulation variables
  */
@@ -94,14 +99,6 @@ double GravityInSpace::compute_potential(const vec2d& pos) {
 vec2d AirResistance::compute_accel(const vec2d& pos, const vec2d& vel) {
 	double v2 = glm::dot(vel, vel);  // Squared velocity magnitude
 	return -10.0 / std::sqrt(v2)*vel;  // Drag force: -k*v (normalized by velocity magnitude)
-}
-
-void Problem::wait_threads() {
-	for (auto& thread : threads) {
-		if (thread.joinable())
-			thread.join();
-	}
-	threads.clear();
 }
 
 /**
@@ -276,25 +273,20 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		return;
 
 	int num_threads = std::max(4U, std::thread::hardware_concurrency());
-	int particles_per_thread = (g_particles.size() + num_threads - 1) / num_threads;
 	g_problem->num_threads = num_threads;
-	g_problem->particles_per_thread = particles_per_thread;
-	auto& threads = g_problem->threads;
-	auto& thread_histograms = g_problem->thread_histograms;
 	
 	auto t0 = std::chrono::high_resolution_clock::now();
 
-	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([&, timestep, method_idx, t]() {
-			int start_idx = t * particles_per_thread;
-			int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
-			for (int i = start_idx; i < end_idx; ++i) {
-				step_one_particle(timestep, method_idx, g_particles[i]);
+	tbb::parallel_for(tbb::blocked_range<int>(0, static_cast<int>(g_particles.size())),
+		[&, timestep, method_idx](const tbb::blocked_range<int>& r) {
+			for (int i = r.begin(); i < r.end(); ++i) {
+				auto& p = g_particles[i];
+				step_one_particle(timestep, method_idx, p);
+				if (g_show_trajectories || p.show_trajectory)
+					p.traj.emplace_back(g_sim_time, p.pos);
 			}
-		});
-	}
-
-	g_problem->wait_threads();
+		}
+	);
 
 	auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -306,40 +298,53 @@ void run_one_simulation_step(double timestep, int method_idx) {
 
 	auto t3 = std::chrono::high_resolution_clock::now();
 
-	// Pre-allocate storage for thread-local results
-	std::vector<double> thread_E(num_threads, 0.0);
-	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([&, t]() {
-			int start_idx = t * particles_per_thread;
-			int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
-			double local_E = 0.0;
+	struct EnergyAccumulator {
+		double energy;
+		bool has_nan;
+		int nan_particle_id;
 
-			for (int i = start_idx; i < end_idx; ++i) {
+		EnergyAccumulator() : energy(0.0), has_nan(false), nan_particle_id(-1) {}
+		EnergyAccumulator(EnergyAccumulator& a, tbb::split) : energy(0.0), has_nan(false), nan_particle_id(-1) {}
+		void join(const EnergyAccumulator& rhs) {
+			energy += rhs.energy;
+			if (rhs.has_nan) {
+				has_nan = true;
+				nan_particle_id = rhs.nan_particle_id;
+			}
+		}
+	};
+
+	EnergyAccumulator result = tbb::parallel_reduce(
+		tbb::blocked_range<int>(0, static_cast<int>(g_particles.size())),
+		EnergyAccumulator(),
+		[&](const tbb::blocked_range<int>& r, EnergyAccumulator local_acc) {
+			for (int i = r.begin(); i < r.end(); ++i) {
 				auto& p = g_particles[i];
-
-				if (g_show_trajectories || p.show_trajectory)
-					p.traj.emplace_back(g_sim_time, p.pos);
-
 				if (p.solution) {
 					p.solution(g_sim_time + timestep, &p.pos, &p.vel, &p.accel);
 				}
 				else {
-					local_E += 0.5 * p.mass * glm::dot(p.vel, p.vel);
+					local_acc.energy += 0.5 * p.mass * glm::dot(p.vel, p.vel);
 					for (auto& field : g_fields) {
-						local_E += field->compute_potential(p.pos) * p.mass;
+						local_acc.energy += field->compute_potential(p.pos) * p.mass;
 					}
 				}
-				if (isnan(local_E))
-					printf("Found NaN for the particle %d\n", p.id);
+				if (isnan(local_acc.energy) && !local_acc.has_nan) {
+					local_acc.has_nan = true;
+					local_acc.nan_particle_id = p.id;
+				}
 			}
-			thread_E[t] = local_E;
-		});
-	}
-	g_problem->wait_threads();
+			return local_acc;
+		},
+		[](EnergyAccumulator a, EnergyAccumulator b) {
+			a.join(b);
+			return a;
+		}
+	);
 
-	double E = 0.0;
-	for (double e : thread_E)
-		E += e;
+	double E = result.energy;
+	if (result.has_nan)
+		printf("Found NaN for the particle %d\n", result.nan_particle_id);
 
 	auto t4 = std::chrono::high_resolution_clock::now();
 
@@ -351,70 +356,38 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		g_energy_array.push_back(E);
 
 		if (g_show_stats) {
-			// Pre-allocate storage for thread-local results
-			std::vector<double> thread_max_speeds(num_threads, 0.0);
-			thread_histograms.resize(num_threads);;
-
-			// Launch threads to compute both max speed and histogram in a single pass
-			for (int t = 0; t < num_threads; ++t) {
-				threads.emplace_back([&, t]() {
-					int start_idx = t * particles_per_thread;
-					int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
-					double local_max = 0.0;
-					
-					for (int i = start_idx; i < end_idx; ++i) {
-						const auto& p = g_particles[i];
-						double speed = glm::length(p.vel);
-						// Update local maximum speed
-						local_max = std::max(local_max, speed);
-					}
-					
-					// Store thread's maximum speed
-					thread_max_speeds[t] = local_max;
-				});
-			}
-			g_problem->wait_threads();
-			
-			// Find global maximum speed
-			double max_speed = 0.0;
-			for (double s : thread_max_speeds) {
-				max_speed = std::max(max_speed, s);
-			}
+			double max_speed = tbb::parallel_reduce(tbb::blocked_range<int>(0, static_cast<int>(g_particles.size())), 0.0,
+				[&](const tbb::blocked_range<int>& r, double local_max) {
+					for (int i = r.begin(); i < r.end(); ++i)
+						local_max = std::max(local_max, glm::length(g_particles[i].vel));
+					return local_max;
+				},
+				[](double a, double b) { return std::max(a, b); }
+			);
 
 			// Add a small buffer (20%) to ensure all particles are visible
 			g_max_speed = max_speed * 1.2;
 			// Ensure minimum value to avoid empty plots
-			if (g_max_speed < 0.1) {
-				g_max_speed = 0.1;
-			}
+			g_max_speed = std::max(0.1, g_max_speed);
 
-			// Second phase: Calculate speed distribution in parallel
-			for (int t = 0; t < num_threads; ++t) {\
-				threads.emplace_back([&, t]() {
-					int start_idx = t * particles_per_thread;
-					int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
-					thread_histograms[t].assign(SPEED_BINS, 0);
-					for (int i = start_idx; i < end_idx; ++i) {
+			g_speed_hist.assign(SPEED_BINS, 0);
+			std::mutex hist_mutex;
+			tbb::parallel_for(tbb::blocked_range<size_t>(0, g_particles.size()),
+				[&](const tbb::blocked_range<size_t>& r) {
+					std::vector<int> local_hist(SPEED_BINS, 0);
+					for (size_t i = r.begin(); i != r.end(); ++i) {
 						const auto& p = g_particles[i];
-						// Calculate speed (velocity magnitude)
 						double speed = glm::length(p.vel);
-
-						// Map speed to histogram bin
 						int bin = static_cast<int>((speed / g_max_speed) * SPEED_BINS);
 						bin = std::max(0, std::min(bin, SPEED_BINS - 1));
-						thread_histograms[t][bin]++;
+						local_hist[bin]++;
 					}
-				});
-			}
-			g_problem->wait_threads();
 
-			// Merge thread-local histograms into the main histogram
-			g_speed_hist.assign(SPEED_BINS, 0);
-			for (int t = 0; t < num_threads; ++t) {
-				for (int b = 0; b < SPEED_BINS; ++b) {
-					g_speed_hist[b] += thread_histograms[t][b];
+					std::lock_guard<std::mutex> lock(hist_mutex);
+					for (int i = 0; i < SPEED_BINS; ++i)
+						g_speed_hist[i] += local_hist[i];
 				}
-			}
+			);
 		}
 	}
 
@@ -693,13 +666,9 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
  * Reverses the appropriate velocity component when a particle is heading toward a boundary.
  */
 void RarefiedGas::handle_boundary() {
-	// Multi-threaded boundary collision detection
-	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([this, t]() {
-			int start_idx = t * particles_per_thread;
-			int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
-
-			for (int i = start_idx; i < end_idx; ++i) {
+	tbb::parallel_for(tbb::blocked_range<int>(0, static_cast<int>(g_particles.size())),
+		[this](const tbb::blocked_range<int>& r) {
+			for (int i = r.begin(); i < r.end(); ++i) {
 				auto& p = g_particles[i];
 				// Left and right walls - reflect x-velocity
 				if ((p.pos.x < container_min_x + p.radius && p.vel.x < 0.0) || (p.pos.x > container_max_x - p.radius && p.vel.x > 0.0)) {
@@ -725,9 +694,8 @@ void RarefiedGas::handle_boundary() {
 					p.is_colliding = true;
 				}
 			}
-		});
-	}
-	wait_threads();
+		}
+	);
 }
 
 /**
@@ -761,121 +729,110 @@ void RarefiedGas::handle_collision() {
 
 	// Create grid: map from grid coordinates to list of particle indices
 	grid.resize(grid_count);
-	int cells_per_thread = (grid_count + num_threads - 1) / num_threads;
-	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([this, t, cells_per_thread, grid_count]() {
-			int start_idx = t * cells_per_thread;
-			int end_idx = std::min((t + 1) * cells_per_thread, grid_count);
-
-			for (int i = start_idx; i < end_idx; ++i) {
+	tbb::parallel_for(tbb::blocked_range<int>(0, grid_count),
+		[this, grid_count](const tbb::blocked_range<int>& r) {
+			for (int i = r.begin(); i < r.end(); ++i) {
 				auto& cell = grid[i];
 				cell.clear();
 				cell.reserve(num_of_particles / grid_count);
 			}
-		});
-	}
-	wait_threads();
+		}
+	);
 
-	// Populate the grid with particle indices using multi-threading
-	int grid_particles_per_thread = (g_particles.size() + num_threads - 1) / num_threads;
-
-	static std::vector<std::mutex> m(num_threads * 30);
-
-	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([this, t, grid_particles_per_thread, &get_grid_xy, grid_x_count, grid_y_count, grid_size]() {
-			int start_idx = t * grid_particles_per_thread;
-			int end_idx = std::min((t + 1) * grid_particles_per_thread, (int)g_particles.size());
-
-			for (int i = start_idx; i < end_idx; ++i) {
-				auto& p = g_particles[i];
-				p.is_colliding = false;
-				get_grid_xy(p.pos.x, p.pos.y, &p.grid_x, &p.grid_y);
-				p.grid_xy = p.grid_y * grid_x_count + p.grid_x;
-				if (p.radius <= g_max_particle_radius) {
-					std::lock_guard<std::mutex> lock(m[p.grid_xy % m.size()]);
-					grid[p.grid_xy].push_back(i);
-				}
-				else {
-					// Handle large particles
-					int k = std::ceil(p.radius / grid_size);
-					for (int dy = -k; dy <= k; ++dy) {
-						for (int dx = -k; dx <= k; ++dx) {
-							int grid_x = p.grid_x + dx;
-							int grid_y = p.grid_y + dy;
-							if (grid_x >= 0 && grid_x < grid_x_count && grid_y >= 0 && grid_y < grid_y_count) {
-								int grid_xy = grid_y * grid_x_count + grid_x;
-								std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
-								grid[grid_xy].push_back(-i);
-							}
+	// Populate the grid with particle indices
+	std::vector<std::mutex> m(num_threads * 30);
+	tbb::parallel_for(tbb::blocked_range<int>(0, (int)g_particles.size()),
+		[this, &get_grid_xy, grid_x_count, grid_y_count, grid_size, &m](const tbb::blocked_range<int>& r) {
+		for (int i = r.begin(); i < r.end(); ++i) {
+			auto& p = g_particles[i];
+			p.is_colliding = false;
+			get_grid_xy(p.pos.x, p.pos.y, &p.grid_x, &p.grid_y);
+			p.grid_xy = p.grid_y * grid_x_count + p.grid_x;
+			if (p.radius <= g_max_particle_radius) {
+				std::lock_guard<std::mutex> lock(m[p.grid_xy % m.size()]);
+				grid[p.grid_xy].push_back(i);
+			}
+			else {
+				// Handle large particles
+				int k = std::ceil(p.radius / grid_size);
+				for (int dy = -k; dy <= k; ++dy) {
+					for (int dx = -k; dx <= k; ++dx) {
+						int grid_x = p.grid_x + dx;
+						int grid_y = p.grid_y + dy;
+						if (grid_x >= 0 && grid_x < grid_x_count && grid_y >= 0 && grid_y < grid_y_count) {
+							int grid_xy = grid_y * grid_x_count + grid_x;
+							std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
+							grid[grid_xy].push_back(-i);
 						}
 					}
 				}
 			}
-		});
-	}
-	wait_threads();
-
-	// Pre-allocate storage for each thread to store found potential collision pairs
-	thread_collision_pairs.resize(num_threads);
+		}
+	});
 
 	// Step 1: Concurrent filtering of potential collision pairs
-	auto collect_potential_collisions = [&](int thread_idx, int start_idx, int end_idx) {
-		// Get the collision pair collection corresponding to the current thread
-		auto& local_pairs = thread_collision_pairs[thread_idx];
-		local_pairs.clear(); // Clear storage
+	tbb::concurrent_vector<std::vector<CollisionPair>> tbb_local_pairs;
 
-		for (int i = start_idx; i < end_idx; ++i) {
-			auto& p = g_particles[i];
-			
-			// Check current grid cell and all 8 neighboring cells
-			for (int dy = -1; dy <= 1; ++dy) {
-				for (int dx = -1; dx <= 1; ++dx) {
-					// Calculate neighboring grid cell coordinates
-					int grid_x = p.grid_x + dx;
-					int grid_y = p.grid_y + dy;
-					
-					// Check if the neighboring grid cell is within bounds
-					if (grid_x < 0 || grid_x >= grid_x_count ||
-						grid_y < 0 || grid_y >= grid_y_count)
-						continue;
-						
-					// Get key for neighboring grid cell
-					int neighbor_key = grid_y * grid_x_count + grid_x;
-						
-					// Check collisions with all particles in the neighboring grid cell
-					for (int j : grid[neighbor_key]) {
-						bool shadowed = (j < 0);
-						j = std::abs(j);
+	tt1 = std::chrono::high_resolution_clock::now();
 
-						// Avoid checking the same pair twice (i < j)
-						if (i >= j)
+	tbb::parallel_for(tbb::blocked_range<int>(0, static_cast<int>(g_particles.size())), 
+		[&](const tbb::blocked_range<int>& r) {
+
+		//auto ttt1 = std::chrono::high_resolution_clock::now();
+
+			// Each thread uses its own local storage to avoid contention
+			std::vector<CollisionPair> local_pairs;
+			//local_pairs.reserve(1000); // Pre-reserve space to reduce allocations
+
+			for (int i = r.begin(); i != r.end(); ++i) {
+				auto& p = g_particles[i];
+				
+				// Check current grid cell and all 8 neighboring cells
+				for (int dy = -1; dy <= 1; ++dy) {
+					for (int dx = -1; dx <= 1; ++dx) {
+						// Calculate neighboring grid cell coordinates
+						int grid_x = p.grid_x + dx;
+						int grid_y = p.grid_y + dy;
+						
+						// Check if the neighboring grid cell is within bounds
+						if (grid_x < 0 || grid_x >= grid_x_count ||
+							grid_y < 0 || grid_y >= grid_y_count)
 							continue;
+						
+						// Get key for neighboring grid cell
+						int neighbor_key = grid_y * grid_x_count + grid_x;
+						
+						// Check collisions with all particles in the neighboring grid cell
+						for (int j : grid[neighbor_key]) {
+							bool shadowed = (j < 0);
+							j = std::abs(j);
 
-						// Check collision between particles i and j
-						vec2d diff = g_particles[i].pos - g_particles[j].pos;
-						double dist2 = glm::dot(diff, diff);
-						double R = g_particles[i].radius + g_particles[j].radius;
+							// Avoid checking the same pair twice (i < j)
+							if (i >= j)
+								continue;
+
+							// Check collision between particles i and j
+							vec2d diff = g_particles[i].pos - g_particles[j].pos;
+							double dist2 = glm::dot(diff, diff);
+							double R = g_particles[i].radius + g_particles[j].radius;
 							
-						// Only save particle pairs that might collide (distance less than sum of radii)
-						if (dist2 <= R * R)
-							local_pairs.push_back({ i, j, dist2, diff, shadowed });
+							// Only save particle pairs that might collide (distance less than sum of radii)
+							if (dist2 <= R * R)
+								local_pairs.push_back({ i, j, dist2, diff, shadowed });
+						}
 					}
 				}
 			}
+			
+			if (!local_pairs.empty())
+				tbb_local_pairs.push_back(local_pairs);
+
+			//auto ttt2 = std::chrono::high_resolution_clock::now();
+			//double time = std::chrono::duration<double, std::milli>(tt3 - tt2).count();
+			//printf("\t%.1f\n", time);
 		}
-	};
+	); 
 	
-	tt1 = std::chrono::high_resolution_clock::now();
-
-	// Launch threads to collect potential collision pairs
-	for (int t = 0; t < num_threads; ++t) {
-		int start_idx = t * particles_per_thread;
-		int end_idx = std::min(static_cast<int>(g_particles.size()), (t + 1) * particles_per_thread);
-		// Pass thread index so the thread knows which pre-allocated storage to use
-		threads.emplace_back(collect_potential_collisions, t, start_idx, end_idx);
-	}
-	wait_threads();
-
 	tt2 = std::chrono::high_resolution_clock::now();
 
 	// Step 2: Sequential processing of all potential collision pairs
@@ -883,11 +840,9 @@ void RarefiedGas::handle_collision() {
 	int actual_collisions = 0;
 	std::set<std::pair<int, int>> shadowed_pairs;
 	// Iterate through collision pairs collected by all threads
-	for (int t = 0; t < num_threads; ++t) {
-		total_pairs += thread_collision_pairs[t].size();
-		
+	for (auto& pair_block : tbb_local_pairs) {
 		// Process each potential collision pair collected by the current thread
-		for (const auto& pair : thread_collision_pairs[t]) {
+		for (const auto& pair : pair_block) {
 			int i = pair.i;
 			int j = pair.j;
 			if (pair.shadowed) {

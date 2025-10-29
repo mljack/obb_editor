@@ -27,6 +27,8 @@ else()
 	endif()
 endif()
 
+find_package(TBB REQUIRED)
+
 include_directories(
 	${SDL2_INCLUDE_DIRS}
 	third_party
@@ -34,6 +36,7 @@ include_directories(
 	third_party/imgui
 	third_party/imgui/backends
 	third_party/implot
+	${TBB_INCLUDE_DIRS}
 )
 
 if(MSVC)
@@ -80,6 +83,7 @@ if(MSVC)
 			${SDL2_LIBRARIES}
 			opengl32.lib
 			${PROJECT_SOURCE_DIR}/third_party/glew/lib/Release/x64/glew32.lib
+			TBB::tbb
 		)
 		set(DLLS
 			${CMAKE_SOURCE_DIR}/third_party/glew/bin/Release/x64/glew32.dll
@@ -90,6 +94,7 @@ if(MSVC)
 			${SDL2_LIBRARIES}
 			opengl32.lib
 			${PROJECT_SOURCE_DIR}/third_party/glew/lib/Release/Win32/glew32.lib
+			TBB::tbb
 		)
 		set(DLLS
 			${CMAKE_SOURCE_DIR}/third_party/glew/bin/Release/Win32/glew32.dll
@@ -109,6 +114,7 @@ if(UNIX)
 		dl
 		GL
 		${SDL2_LIBRARIES}
+		TBB::tbb
 	)
 endif(UNIX)
 

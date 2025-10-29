@@ -104,12 +104,7 @@ public:
 	virtual void handle_collision() {};
 	virtual void destory() {};
 
-	void wait_threads();
-
 	int num_threads = 1;
-	int particles_per_thread = 0;
-	std::vector<std::thread> threads;
-	std::vector<std::vector<int>> thread_histograms;
 };
 
 class PlanetOrbit : public Problem {
