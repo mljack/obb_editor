@@ -100,6 +100,9 @@ public:
 	virtual void handle_boundary() {};
 	virtual void handle_collision() {};
 	virtual void destory() {};
+
+	void wait_threads();
+
 	int num_threads = 1;
 	int particles_per_thread = 0;
 	std::vector<std::thread> threads;
@@ -130,7 +133,6 @@ public:
 	void handle_boundary() override;
 	void handle_collision() override;
 private:
-	// Container boundary variables
 	int num_of_particles;
 	double container_min_x;
 	double container_min_y;

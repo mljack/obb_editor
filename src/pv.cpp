@@ -96,6 +96,13 @@ vec2d AirResistance::compute_accel(const vec2d& pos, const vec2d& vel) {
 	return -10.0 / std::sqrt(v2)*vel;  // Drag force: -k*v (normalized by velocity magnitude)
 }
 
+void Problem::wait_threads() {
+	for (auto& thread : threads) {
+		if (thread.joinable())
+			thread.join();
+	}
+	threads.clear();
+}
 
 /**
  * @brief Starts a new physics simulation based on the selected problem
@@ -287,12 +294,7 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		});
 	}
 
-	// Wait for all threads to complete
-	for (auto& thread : threads) {
-		if (thread.joinable())
-			thread.join();
-	}
-	threads.clear();
+	g_problem->wait_threads();
 
 	auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -333,13 +335,7 @@ void run_one_simulation_step(double timestep, int method_idx) {
 			thread_E[t] = local_E;
 		});
 	}
-
-	// Wait for all threads to complete first phase (max speed calculation)
-	for (auto& thread : threads) {
-		if (thread.joinable())
-			thread.join();
-	}
-	threads.clear();
+	g_problem->wait_threads();
 
 	double E = 0.0;
 	for (double e : thread_E)
@@ -377,13 +373,7 @@ void run_one_simulation_step(double timestep, int method_idx) {
 					thread_max_speeds[t] = local_max;
 				});
 			}
-			
-			// Wait for all threads to complete first phase (max speed calculation)
-			for (auto& thread : threads) {
-				if (thread.joinable())
-					thread.join();
-			}
-			threads.clear();
+			g_problem->wait_threads();
 			
 			// Find global maximum speed
 			double max_speed = 0.0;
@@ -416,13 +406,7 @@ void run_one_simulation_step(double timestep, int method_idx) {
 					}
 				});
 			}
-			
-			// Wait for all threads to complete second phase
-			for (auto& thread : threads) {
-				if (thread.joinable())
-					thread.join();
-			}
-			threads.clear();
+			g_problem->wait_threads();
 
 			// Merge thread-local histograms into the main histogram
 			g_speed_hist.assign(SPEED_BINS, 0);
@@ -743,13 +727,7 @@ void RarefiedGas::handle_boundary() {
 			}
 		});
 	}
-
-	// Wait for all threads to complete
-	for (auto& thread : threads) {
-		if (thread.joinable())
-			thread.join();
-	}
-	threads.clear();
+	wait_threads();
 }
 
 /**
@@ -783,28 +761,58 @@ void RarefiedGas::handle_collision() {
 
 	// Create grid: map from grid coordinates to list of particle indices
 	grid.resize(grid_count);
-	for (auto& cell : grid) {
-		cell.clear();
-		cell.reserve(num_of_particles / grid_count);
-	}
+	int cells_per_thread = (grid_count + num_threads - 1) / num_threads;
+	for (int t = 0; t < num_threads; ++t) {
+		threads.emplace_back([this, t, cells_per_thread, grid_count]() {
+			int start_idx = t * cells_per_thread;
+			int end_idx = std::min((t + 1) * cells_per_thread, grid_count);
 
-	// Populate the grid with particle indices
-	for (int i = 0; i < g_particles.size(); ++i) {
-		auto& p = g_particles[i];
-		p.is_colliding = false;
-		int grid_x, grid_y;
-		get_grid_xy(p.pos.x, p.pos.y, &grid_x, &grid_y);
-		if (p.radius <= g_max_particle_radius) {
-			grid[grid_y * grid_x_count + grid_x].push_back(i);
-		}
-		else {
-			int k = std::ceil(p.radius / grid_size);
-			for (int dy = -k; dy <= k; ++dy)
-				for (int dx = -k; dx <= k; ++dx)
-					if (grid_x + dx >= 0 && grid_x + dx < grid_x_count && grid_y + dy >= 0 && grid_y + dy < grid_y_count)
-						grid[(grid_y + dy) * grid_x_count + (grid_x + dx)].push_back(-i);
-		}
+			for (int i = start_idx; i < end_idx; ++i) {
+				auto& cell = grid[i];
+				cell.clear();
+				cell.reserve(num_of_particles / grid_count);
+			}
+		});
 	}
+	wait_threads();
+
+	// Populate the grid with particle indices using multi-threading
+	int grid_particles_per_thread = (g_particles.size() + num_threads - 1) / num_threads;
+
+	static std::vector<std::mutex> m(num_threads * 30);
+
+	for (int t = 0; t < num_threads; ++t) {
+		threads.emplace_back([this, t, grid_particles_per_thread, &get_grid_xy, grid_x_count, grid_y_count, grid_size]() {
+			int start_idx = t * grid_particles_per_thread;
+			int end_idx = std::min((t + 1) * grid_particles_per_thread, (int)g_particles.size());
+
+			for (int i = start_idx; i < end_idx; ++i) {
+				auto& p = g_particles[i];
+				p.is_colliding = false;
+				int grid_x, grid_y;
+				get_grid_xy(p.pos.x, p.pos.y, &grid_x, &grid_y);
+				if (p.radius <= g_max_particle_radius) {
+					int grid_xy = grid_y * grid_x_count + grid_x;
+					std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
+					grid[grid_xy].push_back(i);
+				}
+				else {
+					// Handle large particles
+					int k = std::ceil(p.radius / grid_size);
+					for (int dy = -k; dy <= k; ++dy) {
+						for (int dx = -k; dx <= k; ++dx) {
+							if (grid_x + dx >= 0 && grid_x + dx < grid_x_count && grid_y + dy >= 0 && grid_y + dy < grid_y_count) {
+								int grid_xy = (grid_y + dy) * grid_x_count + (grid_x + dx);
+								std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
+								grid[grid_xy].push_back(-i);
+							}
+						}
+					}
+				}
+			}
+		});
+	}
+	wait_threads();
 
 	// Pre-allocate storage for each thread to store found potential collision pairs
 	thread_collision_pairs.resize(num_threads);
@@ -865,13 +873,7 @@ void RarefiedGas::handle_collision() {
 		// Pass thread index so the thread knows which pre-allocated storage to use
 		threads.emplace_back(collect_potential_collisions, t, start_idx, end_idx);
 	}
-	
-	// Wait for all threads to complete their collection work
-	for (auto& thread : threads) {
-		if (thread.joinable())
-			thread.join();
-	}
-	threads.clear();
+	wait_threads();
 
 	tt2 = std::chrono::high_resolution_clock::now();
 
