@@ -789,20 +789,21 @@ void RarefiedGas::handle_collision() {
 			for (int i = start_idx; i < end_idx; ++i) {
 				auto& p = g_particles[i];
 				p.is_colliding = false;
-				int grid_x, grid_y;
-				get_grid_xy(p.pos.x, p.pos.y, &grid_x, &grid_y);
+				get_grid_xy(p.pos.x, p.pos.y, &p.grid_x, &p.grid_y);
+				p.grid_xy = p.grid_y * grid_x_count + p.grid_x;
 				if (p.radius <= g_max_particle_radius) {
-					int grid_xy = grid_y * grid_x_count + grid_x;
-					std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
-					grid[grid_xy].push_back(i);
+					std::lock_guard<std::mutex> lock(m[p.grid_xy % m.size()]);
+					grid[p.grid_xy].push_back(i);
 				}
 				else {
 					// Handle large particles
 					int k = std::ceil(p.radius / grid_size);
 					for (int dy = -k; dy <= k; ++dy) {
 						for (int dx = -k; dx <= k; ++dx) {
-							if (grid_x + dx >= 0 && grid_x + dx < grid_x_count && grid_y + dy >= 0 && grid_y + dy < grid_y_count) {
-								int grid_xy = (grid_y + dy) * grid_x_count + (grid_x + dx);
+							int grid_x = p.grid_x + dx;
+							int grid_y = p.grid_y + dy;
+							if (grid_x >= 0 && grid_x < grid_x_count && grid_y >= 0 && grid_y < grid_y_count) {
+								int grid_xy = grid_y * grid_x_count + grid_x;
 								std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
 								grid[grid_xy].push_back(-i);
 							}
@@ -830,12 +831,12 @@ void RarefiedGas::handle_collision() {
 			for (int dy = -1; dy <= 1; ++dy) {
 				for (int dx = -1; dx <= 1; ++dx) {
 					// Calculate neighboring grid cell coordinates
-					int grid_x = static_cast<int>((p.pos.x - this->container_min_x) / grid_size) + dx;
-					int grid_y = static_cast<int>((p.pos.y - this->container_min_y) / grid_size) + dy;
+					int grid_x = p.grid_x + dx;
+					int grid_y = p.grid_y + dy;
 					
 					// Check if the neighboring grid cell is within bounds
-					if (grid_x < 0 || grid_x >= static_cast<int>(container_width / grid_size) ||
-						grid_y < 0 || grid_y >= static_cast<int>(container_height / grid_size))
+					if (grid_x < 0 || grid_x >= grid_x_count ||
+						grid_y < 0 || grid_y >= grid_y_count)
 						continue;
 						
 					// Get key for neighboring grid cell

@@ -793,7 +793,7 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 	float z = 10.0f;
 	for (auto& p : particles) {
 		size_t idx = &p - particles.data();
-		if (!p.is_vip && g_downsample && idx % 20 != 0 && idx % 20 != 1)
+		if (!p.is_vip && g_downsample && idx % 200 != 0 && idx % 200 != 1)
 			continue;
 		GLuint base_idx = (GLuint)v_buf->size() / 7;
 		std::vector<glm::vec2> pts;

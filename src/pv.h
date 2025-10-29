@@ -38,6 +38,9 @@ struct Particle {
 	}
 	int id;
 	int color_idx;
+	int grid_x;
+	int grid_y;
+	int grid_xy;
 	double radius;
 	double mass;
 	vec2d pos;
