@@ -23,6 +23,9 @@
 #include <tbb/blocked_range.h>
 #include <tbb/concurrent_vector.h>
 
+//#include <tbb/global_control.h>
+//tbb::global_control c(tbb::global_control::max_allowed_parallelism, 1);
+
 /**
  * @brief Global simulation variables
  */
@@ -776,6 +779,50 @@ void RarefiedGas::handle_collision() {
 		}
 	});
 
+	int idx_count = 0;
+	for (auto& cell : grid)
+		idx_count += cell.size();
+	int new_idx = static_cast<int>(g_particles.size() - 1);
+
+#if 1
+	std::vector<Particle> particles;
+	particles.resize(g_particles.size());
+	std::map<int, int> big_particle_ids;
+	for (auto& cell : grid) {
+		for (auto& idx : cell) {
+			bool shadow = (idx < 0);
+			if (shadow) {
+				auto iter = big_particle_ids.find(idx);
+				if (iter != big_particle_ids.end()) {
+					idx = iter->second;
+				}
+				else {
+					big_particle_ids.emplace(idx, -new_idx);
+					particles[new_idx] = g_particles[-idx];
+					idx = -new_idx;
+					new_idx--;
+				}
+			}
+			else {
+				particles[new_idx] = g_particles[idx];
+				idx = new_idx;
+				new_idx--;
+			}
+		}
+	}
+	g_particles.swap(particles);
+#endif
+
+	int idx_count2 = 0;
+	for (auto& cell : grid)
+		idx_count2 += cell.size();
+
+	int max_cell_count = 0;
+	for (auto& cell : grid)
+		max_cell_count = std::max(max_cell_count, (int)cell.size());
+
+	printf("max_cell_count: %d, new_idx: %d, idx_count: %d, idx_count2: %d\n", max_cell_count, new_idx, idx_count, idx_count2);
+
 	// Step 1: Concurrent filtering of potential collision pairs
 	tbb::concurrent_vector<std::vector<CollisionPair>> tbb_local_pairs;
 
@@ -799,7 +846,7 @@ void RarefiedGas::handle_collision() {
 						// Calculate neighboring grid cell coordinates
 						int grid_x = p.grid_x + dx;
 						int grid_y = p.grid_y + dy;
-						
+
 						// Check if the neighboring grid cell is within bounds
 						if (grid_x < 0 || grid_x >= grid_x_count ||
 							grid_y < 0 || grid_y >= grid_y_count)
@@ -838,7 +885,7 @@ void RarefiedGas::handle_collision() {
 			//printf("\t%.1f\n", time);
 		}
 	); 
-	
+
 	tt2 = std::chrono::high_resolution_clock::now();
 
 	// Step 2: Sequential processing of all potential collision pairs
@@ -860,7 +907,7 @@ void RarefiedGas::handle_collision() {
 				}
 			}
 
-			//total_pairs++;
+			total_pairs++;
 			
 			// Avoid numerical instability caused by division by zero or very small values
 			const double min_dist2 = 1e-12;
@@ -896,11 +943,11 @@ void RarefiedGas::handle_collision() {
 			g_particles[i].vel += delta_v_i;
 			g_particles[j].vel += delta_v_j;
 			
-			//actual_collisions++;
+			actual_collisions++;
 		}
 	}
 
 	tt3 = std::chrono::high_resolution_clock::now();
-	//printf("\tpairs: %d/%d = %.1f%%\n", actual_collisions, total_pairs, (double)actual_collisions / total_pairs * 100.0);
+	printf("\tpairs: %d/%d = %.1f%%\n", actual_collisions, total_pairs, (double)actual_collisions / total_pairs * 100.0);
 }
 
