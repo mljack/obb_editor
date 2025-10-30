@@ -14,6 +14,7 @@ using vec2f = glm::vec2;
 #include "marker.h"
 
 extern double g_max_particle_radius;
+extern int g_num_of_big_particles;
 
 struct TrajPt {
 	TrajPt(double t1, const vec2d& pos1) {
@@ -131,7 +132,6 @@ public:
 	void handle_collision() override;
 private:
 	int num_of_particles;
-	int num_of_big_particles = 0;
 	double container_min_x;
 	double container_min_y;
 	double container_max_x;

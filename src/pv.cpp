@@ -45,6 +45,7 @@ std::vector<int> idx_bases;
 
 double g_max_particle_radius = 0.00001;
 int g_frame_count = 0;
+int g_num_of_big_particles = 0;
 
 // Speed distribution statistics global variables
 std::vector<int> g_speed_hist;
@@ -520,6 +521,7 @@ void PlanetOrbit::init(std::map<int, Marker>* markers) {
 	//	});
 	//	g_particles.push_back(solution);
 	//}
+	g_num_of_big_particles = 1;
 }
 
 /**
@@ -566,6 +568,7 @@ void BadmintonClearShot::init(std::map<int, Marker>* markers) {
 	for (auto&[idx, m] : *markers) {
 		g_particles[count++].set(g_sim_time, idx, /*color_idx=*/0, /*radius=*/4.0,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
 	}
+	g_num_of_big_particles = 2;
 }
 
 /**
@@ -641,7 +644,7 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 			g_particles[idx].set(g_sim_time, idx, /*color_idx=*/2, particle_radius, /*mass=*/particle_radius * particle_radius * glm::pi<double>(), vec2d(x2, y), vec2d(vx, vy), vec2d(0.0, 0.0));
 	}
 
-	num_of_big_particles = 4;
+	g_num_of_big_particles = 4;
 	g_particles.back().show_trajectory = true;
 	Particle p;
 	p.set(g_sim_time, g_particles.size(), /*color_idx=*/1, particle_radius, /*mass=*/p.radius * p.radius * glm::pi<double>(), vec2d(center_x, center_y), vec2d(0.0, 0.0), vec2d(0.0, 0.0));
@@ -814,9 +817,9 @@ void RarefiedGas::handle_collision() {
 		auto tttt0 = std::chrono::high_resolution_clock::now();
 
 		// Copy big particles without reordering.
-		int new_idx = static_cast<int>(g_particles.size() - 1) - num_of_big_particles;
+		int new_idx = static_cast<int>(g_particles.size() - 1) - g_num_of_big_particles;
 		particles.resize(g_particles.size());
-		for (int i = 0; i < num_of_big_particles; ++i)
+		for (int i = 0; i < g_num_of_big_particles; ++i)
 			particles[g_particles.size() - 1 - i] = g_particles[g_particles.size() - 1 - i];
 
 		auto tttt1 = std::chrono::high_resolution_clock::now();
@@ -861,9 +864,9 @@ void RarefiedGas::handle_collision() {
 		auto tttt0 = std::chrono::high_resolution_clock::now();
 
 		// Copy big particles without reordering.
-		int new_idx = static_cast<int>(g_particles.size() - 1) - num_of_big_particles;
+		int new_idx = static_cast<int>(g_particles.size() - 1) - g_num_of_big_particles;
 		particles.resize(g_particles.size());
-		for (int i = 0; i < num_of_big_particles; ++i)
+		for (int i = 0; i < g_num_of_big_particles; ++i)
 			particles[g_particles.size() - 1 - i] = g_particles[g_particles.size() - 1 - i];
 
 		auto tttt1 = std::chrono::high_resolution_clock::now();
@@ -963,7 +966,7 @@ void RarefiedGas::handle_collision() {
 
 	// big vs grid index
 	std::vector<std::pair<int, int>> particle_grid_pairs;
-	for (int i = g_particles.size() - num_of_big_particles; i < g_particles.size(); ++i) {
+	for (int i = g_particles.size() - g_num_of_big_particles; i < g_particles.size(); ++i) {
 		auto& p_big = g_particles[i];
 		int k = std::ceil(p_big.radius / grid_size);
 		for (int dy = -k; dy <= k; ++dy) {
@@ -1015,7 +1018,7 @@ void RarefiedGas::handle_collision() {
 	// big vs big
 	if (tbb_local_pairs.empty())
 		tbb_local_pairs.emplace_back();
-	for (int i = g_particles.size() - num_of_big_particles; i < g_particles.size(); ++i) {
+	for (int i = g_particles.size() - g_num_of_big_particles; i < g_particles.size(); ++i) {
 		auto& p_big_a = g_particles[i];
 		for (int j = i + 1; j < g_particles.size(); ++j) {
 			vec2d diff = g_particles[i].pos - g_particles[j].pos;

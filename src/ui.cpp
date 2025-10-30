@@ -391,7 +391,7 @@ void render_simulation_settings() {
 		}
 		ImGui::SameLine();
 		ImGui::Checkbox("Show Statistics", &g_show_stats);
-		ImGui::Checkbox("Downsample Particles to 1%", &g_downsample);
+		ImGui::Checkbox("Downsample Particles to 10%", &g_downsample);
 		sim_time_f = (float)g_sim_time;
 		if (ImGui::SliderFloat("Sim Time", &sim_time_f, 0.0f, max_time, "%.4f")) {
 			seek_to_sim_time_moment(sim_time_f, &g_markers);

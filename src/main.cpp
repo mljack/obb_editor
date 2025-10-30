@@ -45,6 +45,8 @@
 #include "pwx.h"
 #include "pv.h"
 
+#include <tbb/concurrent_vector.h>
+#include <tbb/parallel_for.h>
 
 #if defined(__EMSCRIPTEN__)
 // Emscripten wants to run the mainloop because of the way the browser is single threaded.
@@ -789,19 +791,76 @@ void build_markers_buffer(const std::map<int, Marker>& markers, std::vector<GLfl
 
 void build_particles_buffer(const std::vector<Particle>& particles, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
 	std::vector<GLfloat>* v_buf2, std::vector<GLuint>* idx_buf2, std::vector<GLfloat>* v_buf3, std::vector<GLuint>* idx_buf3) {
+	if (particles.empty())
+		return;
+
+	//auto t0 = std::chrono::high_resolution_clock::now();
+
 	glm::vec3 c[] = { red, yellow, blue, green };
 	float z = 10.0f;
-	for (auto& p : particles) {
-		size_t idx = &p - particles.data();
-		if (!p.is_vip && g_downsample && p.id % 200 != 0 && p.id % 200 != 1)
-			continue;
+	tbb::concurrent_vector<int> traj_particles;
+
+	int n = std::max(4, static_cast<int>(std::round(particles[0].radius)));
+	
+	int step = g_downsample ? 10 : 1;
+
+	GLuint vbuf_base_idx0 = (GLuint)v_buf->size();
+	size_t idx_buf_base_idx0 = idx_buf->size();
+	v_buf->resize(v_buf->size() + (g_particles.size() - g_num_of_big_particles) / step * 7 * n);
+	idx_buf->resize(idx_buf->size() + (g_particles.size() - g_num_of_big_particles) / step * 2 * n);
+
+	std::vector<glm::dvec2> pts(n);
+	for (int i = 0; i < n; ++i) {
+		double a = glm::pi<double>() * 2 * i / n;
+		pts[i] = particles[0].radius * glm::dvec2(std::cos(a), std::sin(a));
+	}
+
+	tbb::parallel_for(tbb::blocked_range<int>(0, static_cast<int>(g_particles.size() - g_num_of_big_particles) / step / 2),
+		[&particles, &pts, &traj_particles, vbuf_base_idx0, v_buf, idx_buf, step, n, z, c, idx_buf_base_idx0](const tbb::blocked_range<int>& r) {
+		for (int i = r.begin(); i < r.end(); ++i) {
+			int idx = i * step * 2;
+			for (int j = 0; j < 2; ++j) {
+				auto& p = particles[idx + j];
+				GLuint vbuf_base_idx = vbuf_base_idx0 + (i * 2 + j) * 7 * n;
+				GLuint idx_buf_base_idx = idx_buf_base_idx0 + (i * 2 + j) * 2 * n;
+
+				for (int i = 0; i < n; ++i, vbuf_base_idx += 7, idx_buf_base_idx += 2) {
+					auto pt = p.pos + pts[i];
+					(*v_buf)[vbuf_base_idx + 0] = pt.x;
+					(*v_buf)[vbuf_base_idx + 1] = g_image_height - pt.y;
+					(*v_buf)[vbuf_base_idx + 2] = z;
+					if (p.is_colliding) {
+						(*v_buf)[vbuf_base_idx + 3] = green.x;
+						(*v_buf)[vbuf_base_idx + 4] = green.y;
+						(*v_buf)[vbuf_base_idx + 5] = green.z;
+						(*v_buf)[vbuf_base_idx + 6] = 1.0f;
+					}
+					else {
+						(*v_buf)[vbuf_base_idx + 3] = c[p.color_idx].x;
+						(*v_buf)[vbuf_base_idx + 4] = c[p.color_idx].y;
+						(*v_buf)[vbuf_base_idx + 5] = c[p.color_idx].z;
+						(*v_buf)[vbuf_base_idx + 6] = 1.0f;
+					}
+					(*idx_buf)[idx_buf_base_idx + 0] = vbuf_base_idx / 7;
+					(*idx_buf)[idx_buf_base_idx + 1] = vbuf_base_idx / 7 - i + (i + 1) % n;
+				}
+
+				if (g_show_trajectories || p.show_trajectory)
+					traj_particles.push_back(idx + j);
+			}
+		}
+	});
+
+	for (int idx = particles.size() - g_num_of_big_particles; idx < particles.size(); ++idx) {
+		auto& p = particles[idx];
+
 		GLuint base_idx = (GLuint)v_buf->size() / 7;
 		std::vector<glm::vec2> pts;
 		int n = std::max(4, static_cast<int>(std::round(p.radius)));
-		for (int i = 0; i <= n; ++i) {
+		for (int i = 0; i < n; ++i) {
 			double a = glm::pi<double>() * 2 * i / n;
 			pts.push_back(p.pos + p.radius * glm::dvec2(std::cos(a), std::sin(a)));
-			idx_buf->push_back(base_idx + i % (n + 1)); idx_buf->push_back(base_idx + (i + 1) % (n + 1));
+			idx_buf->push_back(base_idx + i % n); idx_buf->push_back(base_idx + (i + 1) % n);
 		}
 		for (auto& pt : pts) {
 			v_buf->push_back(pt.x);
@@ -809,25 +868,35 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 			v_buf->push_back(z);
 			if (p.is_colliding) {
 				v_buf->push_back(green.x); v_buf->push_back(green.y); v_buf->push_back(green.z); v_buf->push_back(1.0f);
-			} else {
+			}
+			else {
 				v_buf->push_back(c[p.color_idx].x); v_buf->push_back(c[p.color_idx].y); v_buf->push_back(c[p.color_idx].z); v_buf->push_back(1.0f);
 			}
 		}
 
-		if (g_show_trajectories || p.show_trajectory) {
-			GLuint base_idx2 = (GLuint)v_buf->size() / 7;
-			for (size_t i = 0; i < p.traj.size(); ++i) {
-				auto& pt = p.traj[i].pos;
-				v_buf->push_back(pt.x);
-				v_buf->push_back(g_image_height - pt.y);
-				v_buf->push_back(z);
-				v_buf->push_back(c[p.color_idx].x); v_buf->push_back(c[p.color_idx].y); v_buf->push_back(c[p.color_idx].z); v_buf->push_back(1.0f);
-				if (i > 0) {
-					idx_buf->push_back(base_idx2 + i - 1); idx_buf->push_back(base_idx2 + i);
-				}
+		if (g_show_trajectories || p.show_trajectory)
+			traj_particles.push_back(idx);
+	}
+
+	for(int idx : traj_particles) {
+		auto& p = particles[idx];
+
+		GLuint base_idx2 = (GLuint)v_buf->size() / 7;
+		for (size_t i = 0; i < p.traj.size(); ++i) {
+			auto& pt = p.traj[i].pos;
+			v_buf->push_back(pt.x);
+			v_buf->push_back(g_image_height - pt.y);
+			v_buf->push_back(z);
+			v_buf->push_back(c[p.color_idx].x); v_buf->push_back(c[p.color_idx].y); v_buf->push_back(c[p.color_idx].z); v_buf->push_back(1.0f);
+			if (i > 0) {
+				idx_buf->push_back(base_idx2 + i - 1); idx_buf->push_back(base_idx2 + i);
 			}
 		}
 	}
+
+	//auto t1 = std::chrono::high_resolution_clock::now();
+	//double time_build_particle_buf = std::chrono::duration<double, std::milli>(t1 - t0).count();
+	//printf("\ttime_build_particle_buf: %.2f\n", time_build_particle_buf);
 }
 
 void build_env_buffer(const std::vector<std::vector<vec2d>>& env, std::vector<GLfloat>* v_buf, std::vector<GLuint>* idx_buf,
