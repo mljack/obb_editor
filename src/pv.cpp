@@ -44,6 +44,7 @@ std::vector<Particle> particles;
 std::vector<int> idx_bases;
 
 double g_max_particle_radius = 0.00001;
+int g_frame_count = 0;
 
 // Speed distribution statistics global variables
 std::vector<int> g_speed_hist;
@@ -133,10 +134,12 @@ void start_simulation(int problem_idx, std::map<int, Marker>* markers) {
 		g_problem->init(markers);
 
 	// Start tracking trajectories if enabled
-		for (auto& p : g_particles)
-			if (g_show_trajectories || p.show_trajectory)
-				p.traj.emplace_back(g_sim_time, p.pos);  // Record initial position
-	}
+	for (auto& p : g_particles)
+		if (g_show_trajectories || p.show_trajectory)
+			p.traj.emplace_back(g_sim_time, p.pos);  // Record initial position
+
+	g_frame_count = 0;
+}
 
 /**
  * @brief Computes acceleration for all particles based on active force fields
@@ -410,6 +413,8 @@ void run_one_simulation_step(double timestep, int method_idx) {
 
 	printf("integrator: %.2f, collision: %.2f(init: %.1f, filter: %.1f, resolve: %.1f), boundary: %.2f, energy: %.2f, hist: %.2f\n",
 		time_integrator, time_collision, time_build_grid, time_pos_filter, time_collision_pair, time_boundary, time_energy, time_hist);
+
+	g_frame_count++;
 }
 
 /**
@@ -763,124 +768,56 @@ void RarefiedGas::handle_collision() {
 					[](int idx_a, int idx_b) {return std::abs(idx_a) > std::abs(idx_b); });
 				cell.insert(it, i);
 			}
-			//else {
-			//	// Handle large particles
-			//	int k = std::ceil(p.radius / grid_size);
-			//	for (int dy = -k; dy <= k; ++dy) {
-			//		for (int dx = -k; dx <= k; ++dx) {
-			//			int grid_x = p.grid_x + dx;
-			//			int grid_y = p.grid_y + dy;
-			//			if (grid_x >= 0 && grid_x < grid_x_count && grid_y >= 0 && grid_y < grid_y_count) {
-			//				int grid_xy = grid_y * grid_x_count + grid_x;
-			//				std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
-			//				auto& cell = grid[grid_xy];
-			//				auto it = std::lower_bound(cell.begin(), cell.end(), -i,
-			//					[](int idx_a, int idx_b) {return std::abs(idx_a) > std::abs(idx_b); });
-			//				cell.insert(it, -i);
-			//			}
-			//		}
-			//	}
-			//}
 		}
 	});
 
-
-	//int idx_count = 0;
-	//for (auto& cell : grid)
-	//	idx_count += cell.size();
 
 #if 1
-	static int ccc = 0;
-	ccc++;
-	if (ccc % 20 == 1)
-	{
+	// Reorder small particles every 5 frames
+	if (g_frame_count % 5 == 3) {
 
-	auto tttt0 = std::chrono::high_resolution_clock::now();
+		auto tttt0 = std::chrono::high_resolution_clock::now();
 
-	int new_idx = static_cast<int>(g_particles.size() - 1) - num_of_big_particles;
-	particles.resize(g_particles.size());
-	for (int i = 0; i < num_of_big_particles; ++i)
-		particles[g_particles.size() - 1 - i] = g_particles[g_particles.size() - 1 - i];
+		// Copy big particles without reordering.
+		int new_idx = static_cast<int>(g_particles.size() - 1) - num_of_big_particles;
+		particles.resize(g_particles.size());
+		for (int i = 0; i < num_of_big_particles; ++i)
+			particles[g_particles.size() - 1 - i] = g_particles[g_particles.size() - 1 - i];
 
-	idx_bases.clear();
-	idx_bases.reserve(grid.size());
+		auto tttt1 = std::chrono::high_resolution_clock::now();
 
-//	big_particle_ids.clear();
-//#if 0
-//	tbb::parallel_for(tbb::blocked_range<int>(0, (int)grid.size()),
-//		[this, &new_idx](const tbb::blocked_range<int>& r) {
-//		for (int i = r.begin(); i < r.end(); ++i) {
-//			auto& cell = grid[i];
-//			for (auto& idx : cell) {
-//				if (idx < 0) {
-//					std::lock_guard<std::mutex> lock(big_particle_ids_mutex);
-//					auto iter = big_particle_ids.find(idx);
-//					if (iter == big_particle_ids.end()) {
-//						big_particle_ids.emplace(idx, -new_idx);
-//						idx = -new_idx;
-//						new_idx--;
-//					}
-//				}
-//			}
-//		}
-//	});
-//#else
-//	for (auto& cell : grid) {
-//		for (auto& idx : cell) {
-//			if (idx < 0) {
-//				auto iter = big_particle_ids.find(idx);
-//				if (iter == big_particle_ids.end()) {
-//					big_particle_ids.emplace(idx, -new_idx);
-//					idx = -new_idx;
-//					new_idx--;
-//				}
-//			}
-//		}
-//	}
-//#endif
-
-	auto tttt1 = std::chrono::high_resolution_clock::now();
-
-	for (size_t i = 0; i < grid.size(); ++i) {
-		idx_bases.push_back(new_idx);
-		new_idx -= grid[i].size();
-	}
-
-	auto tttt2 = std::chrono::high_resolution_clock::now();
-
-	tbb::parallel_for(tbb::blocked_range<int>(0, (int)grid.size()),
-		[this](const tbb::blocked_range<int>& r) {
-		for (int i = r.begin(); i < r.end(); ++i) {
-			auto& cell = grid[i];
-			int new_idx = idx_bases[i];
-			for (auto& idx : cell) {
-				particles[new_idx] = g_particles.at(idx);
-				idx = new_idx;
-				new_idx--;
-			}
+		// Calculate index base for each cell
+		idx_bases.clear();
+		idx_bases.reserve(grid.size());
+		for (size_t i = 0; i < grid.size(); ++i) {
+			idx_bases.push_back(new_idx);
+			new_idx -= grid[i].size();
 		}
-	});
 
-	g_particles.swap(particles);
+		auto tttt2 = std::chrono::high_resolution_clock::now();
 
-	auto tttt3 = std::chrono::high_resolution_clock::now();
-	double time_count_big_particle = std::chrono::duration<double, std::milli>(tttt1 - tttt0).count();
-	double time_base_idx = std::chrono::duration<double, std::milli>(tttt2 - tttt1).count();
-	double time_copy = std::chrono::duration<double, std::milli>(tttt3 - tttt2).count();
-	printf("!!!! \t\ttime_count_big_particle: %.2f, time_base_idx: %.2f, time_copy: %.2f\n", time_count_big_particle, time_base_idx, time_copy);
+		// Reorder small particles with multi-threading
+		tbb::parallel_for(tbb::blocked_range<int>(0, (int)grid.size()),
+			[this](const tbb::blocked_range<int>& r) {
+			for (int i = r.begin(); i < r.end(); ++i) {
+				auto& cell = grid[i];
+				int new_idx = idx_bases[i];
+				for (auto& idx : cell) {
+					particles[new_idx] = g_particles.at(idx);
+					idx = new_idx;
+					new_idx--;
+				}
+			}
+		});
+		g_particles.swap(particles);
 
-}
+		auto tttt3 = std::chrono::high_resolution_clock::now();
+		double time_copy_big_particle = std::chrono::duration<double, std::milli>(tttt1 - tttt0).count();
+		double time_base_idx = std::chrono::duration<double, std::milli>(tttt2 - tttt1).count();
+		double time_copy = std::chrono::duration<double, std::milli>(tttt3 - tttt2).count();
+		printf("!!!! \t\ttime_copy_big_particle: %.2f, time_base_idx: %.2f, time_copy: %.2f\n", time_copy_big_particle, time_base_idx, time_copy);
+	}
 #endif
-
-	//int idx_count2 = 0;
-	//for (auto& cell : grid)
-	//	idx_count2 += cell.size();
-
-	//int max_cell_count = 0;
-	//for (auto& cell : grid)
-	//	max_cell_count = std::max(max_cell_count, (int)cell.size());
-
-	//printf("max_cell_count: %d, new_idx: %d, idx_count: %d, idx_count2: %d\n", max_cell_count, new_idx, idx_count, idx_count2);
 
 	// Step 1: Concurrent filtering of potential collision pairs
 	tbb::concurrent_vector<std::vector<CollisionPair>> tbb_local_pairs;
