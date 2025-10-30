@@ -711,6 +711,28 @@ void RarefiedGas::handle_boundary() {
 	);
 }
 
+inline int next_power_of_two(int x, int* bits) {
+	int xx = x - 1;
+	*bits = 0;
+	int v = 1;
+	while (xx > 0) {
+		(*bits)++;
+		v <<= 1;
+		xx >>= 1;
+	}
+	return v;
+}
+
+inline void z_order_to_2d(int z, int m_n, int* x, int* y) {
+	*x = 0;
+	*y = 0;
+
+	for (int k = 0; k < m_n; ++k) {
+		*x |= ((z >> (2 * k)) & 1) << k;
+		*y |= ((z >> (2 * k + 1)) & 1) << k;
+	}
+}
+
 /**
 	* @brief Handles collisions between gas particles
 	* 
@@ -771,8 +793,68 @@ void RarefiedGas::handle_collision() {
 		}
 	});
 
-
 #if 1
+	// Init Z-order curve indices
+	if (z_order_curve_xy.empty()) {
+		int x_bits, y_bits;
+		int grid_x_count2 = next_power_of_two(grid_x_count, &x_bits);
+		int grid_y_count2 = next_power_of_two(grid_y_count, &y_bits);
+		int m = std::max(x_bits, y_bits);
+		for (int z = 0; z < grid_x_count2*grid_y_count2; ++z) {
+			int xx, yy;
+			z_order_to_2d(z, m, &xx, &yy);
+			if (xx < grid_x_count && yy < grid_y_count)
+				z_order_curve_xy.push_back(yy * grid_x_count + xx);
+		}
+	}
+
+	// Reorder small particles every 10 frames
+	if (g_frame_count % 10 == 0) {
+
+		auto tttt0 = std::chrono::high_resolution_clock::now();
+
+		// Copy big particles without reordering.
+		int new_idx = static_cast<int>(g_particles.size() - 1) - num_of_big_particles;
+		particles.resize(g_particles.size());
+		for (int i = 0; i < num_of_big_particles; ++i)
+			particles[g_particles.size() - 1 - i] = g_particles[g_particles.size() - 1 - i];
+
+		auto tttt1 = std::chrono::high_resolution_clock::now();
+
+		// Calculate index base for each cell
+		idx_bases.clear();
+		idx_bases.reserve(grid.size());
+		for (int grid_xy : z_order_curve_xy) {
+			idx_bases.push_back(new_idx);
+			new_idx -= grid[grid_xy].size();
+		}
+
+		auto tttt2 = std::chrono::high_resolution_clock::now();
+
+		// Reorder small particles with multi-threading
+		tbb::parallel_for(tbb::blocked_range<int>(0, (int)z_order_curve_xy.size()),
+			[this](const tbb::blocked_range<int>& r) {
+			for (int i = r.begin(); i < r.end(); ++i) {
+				int grid_xy = z_order_curve_xy[i];
+				int new_idx = idx_bases[i];
+				for (auto& idx : grid[grid_xy]) {
+					particles[new_idx] = g_particles[idx];
+					idx = new_idx--;
+				}
+			}
+		});
+
+		g_particles.swap(particles);
+
+		auto tttt3 = std::chrono::high_resolution_clock::now();
+		double time_copy_big_particle = std::chrono::duration<double, std::milli>(tttt1 - tttt0).count();
+		double time_base_idx = std::chrono::duration<double, std::milli>(tttt2 - tttt1).count();
+		double time_copy = std::chrono::duration<double, std::milli>(tttt3 - tttt2).count();
+		printf("!!!! \t\ttime_copy_big_particle: %.2f, time_base_idx: %.2f, time_copy: %.2f\n", time_copy_big_particle, time_base_idx, time_copy);
+	}
+#endif
+
+#if 0
 	// Reorder small particles every 5 frames
 	if (g_frame_count % 5 == 3) {
 
