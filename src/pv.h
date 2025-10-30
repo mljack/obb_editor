@@ -132,6 +132,7 @@ public:
 	void handle_collision() override;
 private:
 	int num_of_particles;
+	int num_of_big_particles = 0;
 	double container_min_x;
 	double container_min_y;
 	double container_max_x;
