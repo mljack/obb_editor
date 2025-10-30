@@ -39,6 +39,14 @@ std::vector<std::vector<vec2d>> g_env;  ///< Environment boundaries
 std::vector<std::shared_ptr<Field>> g_fields;       ///< Force fields affecting particles
 std::vector<Particle> g_particles;  ///< Simulated particles
 std::vector<float> g_t_array, g_energy_array; ///< Energy tracking arrays
+
+std::vector<Particle> particles;
+std::vector<int> idx_bases;
+std::vector<int> big_particle_counts;
+std::mutex big_particle_ids_mutex;
+std::map<int, int> big_particle_ids;
+
+
 double g_max_particle_radius = 0.00001;
 
 // Speed distribution statistics global variables
@@ -717,7 +725,7 @@ void RarefiedGas::handle_collision() {
 	int grid_y_count = static_cast<int>(container_height / grid_size);
 	int grid_count = grid_x_count * grid_x_count;
 	//printf("grid_size: %f, max_grid_x: %f, grid_count: %d\n", grid_size, container_width / grid_size, grid_count);
-	
+
 	// Function to get grid key from particle position
 	auto get_grid_xy = [&](double x, double y, int* grid_x, int* grid_y) -> void {
 		// Convert world coordinates to grid coordinates
@@ -727,19 +735,19 @@ void RarefiedGas::handle_collision() {
 		*grid_x = std::max(0, std::min(*grid_x, grid_x_count - 1));
 		*grid_y = std::max(0, std::min(*grid_y, grid_y_count - 1));
 	};
- 
+
 	tt0 = std::chrono::high_resolution_clock::now();
 
 	// Create grid: map from grid coordinates to list of particle indices
 	grid.resize(grid_count);
 	tbb::parallel_for(tbb::blocked_range<int>(0, grid_count),
 		[this, grid_count](const tbb::blocked_range<int>& r) {
-			for (int i = r.begin(); i < r.end(); ++i) {
-				auto& cell = grid[i];
-				cell.clear();
-				cell.reserve(num_of_particles / grid_count);
-			}
+		for (int i = r.begin(); i < r.end(); ++i) {
+			auto& cell = grid[i];
+			cell.clear();
+			cell.reserve(num_of_particles / grid_count);
 		}
+	}
 	);
 
 	// Populate the grid with particle indices
@@ -779,49 +787,120 @@ void RarefiedGas::handle_collision() {
 		}
 	});
 
-	int idx_count = 0;
-	for (auto& cell : grid)
-		idx_count += cell.size();
-	int new_idx = static_cast<int>(g_particles.size() - 1);
+
+	//int idx_count = 0;
+	//for (auto& cell : grid)
+	//	idx_count += cell.size();
 
 #if 1
-	std::vector<Particle> particles;
+	static int ccc = 0;
+	ccc++;
+	if (ccc % 20 == 1)
+	{
+
+	auto tttt0 = std::chrono::high_resolution_clock::now();
+
+	int new_idx = static_cast<int>(g_particles.size() - 1);
 	particles.resize(g_particles.size());
-	std::map<int, int> big_particle_ids;
+	idx_bases.clear();
+	idx_bases.reserve(grid.size());
+
+	big_particle_ids.clear();
+#if 0
+	tbb::parallel_for(tbb::blocked_range<int>(0, (int)grid.size()),
+		[this, &new_idx](const tbb::blocked_range<int>& r) {
+		for (int i = r.begin(); i < r.end(); ++i) {
+			auto& cell = grid[i];
+			for (auto& idx : cell) {
+				if (idx < 0) {
+					std::lock_guard<std::mutex> lock(big_particle_ids_mutex);
+					auto iter = big_particle_ids.find(idx);
+					if (iter == big_particle_ids.end()) {
+						big_particle_ids.emplace(idx, -new_idx);
+						idx = -new_idx;
+						new_idx--;
+					}
+				}
+			}
+		}
+	});
+#else
 	for (auto& cell : grid) {
 		for (auto& idx : cell) {
-			bool shadow = (idx < 0);
-			if (shadow) {
+			if (idx < 0) {
 				auto iter = big_particle_ids.find(idx);
-				if (iter != big_particle_ids.end()) {
-					idx = iter->second;
-				}
-				else {
+				if (iter == big_particle_ids.end()) {
 					big_particle_ids.emplace(idx, -new_idx);
-					particles[new_idx] = g_particles[-idx];
 					idx = -new_idx;
 					new_idx--;
 				}
 			}
-			else {
-				particles[new_idx] = g_particles[idx];
-				idx = new_idx;
+		}
+	}
+#endif
+
+	auto tttt1 = std::chrono::high_resolution_clock::now();
+
+	for (size_t i = 0; i < grid.size(); ++i) {
+		idx_bases.push_back(new_idx);
+		for (auto& idx : grid[i]) {
+			if (idx < 0) {
+				int new_idx = big_particle_ids[idx];
+				if (new_idx < 0) {
+					particles[-new_idx] = g_particles.at(-idx);
+					//if (idx > big_particle_ids.size())
+					//	printf("D");
+					big_particle_ids[idx] = -new_idx;
+					idx = new_idx;
+				}
+				else {
+					idx = -new_idx;
+				}
+			}
+			else
+			{
 				new_idx--;
 			}
 		}
 	}
+
+	auto tttt2 = std::chrono::high_resolution_clock::now();
+
+	tbb::parallel_for(tbb::blocked_range<int>(0, (int)grid.size()),
+		[this](const tbb::blocked_range<int>& r) {
+		for (int i = r.begin(); i < r.end(); ++i) {
+			auto& cell = grid[i];
+			int new_idx = idx_bases[i];
+			for (auto& idx : cell) {
+				if (idx >= 0) {
+					particles[new_idx] = g_particles.at(idx);
+					idx = new_idx;
+					new_idx--;
+				}
+			}
+		}
+	});
+
 	g_particles.swap(particles);
+
+	auto tttt3 = std::chrono::high_resolution_clock::now();
+	double time_count_big_particle = std::chrono::duration<double, std::milli>(tttt1 - tttt0).count();
+	double time_base_idx = std::chrono::duration<double, std::milli>(tttt2 - tttt1).count();
+	double time_copy = std::chrono::duration<double, std::milli>(tttt3 - tttt2).count();
+	printf("!!!! \t\ttime_count_big_particle: %.2f, time_base_idx: %.2f, time_copy: %.2f\n", time_count_big_particle, time_base_idx, time_copy);
+
+}
 #endif
 
-	int idx_count2 = 0;
-	for (auto& cell : grid)
-		idx_count2 += cell.size();
+	//int idx_count2 = 0;
+	//for (auto& cell : grid)
+	//	idx_count2 += cell.size();
 
-	int max_cell_count = 0;
-	for (auto& cell : grid)
-		max_cell_count = std::max(max_cell_count, (int)cell.size());
+	//int max_cell_count = 0;
+	//for (auto& cell : grid)
+	//	max_cell_count = std::max(max_cell_count, (int)cell.size());
 
-	printf("max_cell_count: %d, new_idx: %d, idx_count: %d, idx_count2: %d\n", max_cell_count, new_idx, idx_count, idx_count2);
+	//printf("max_cell_count: %d, new_idx: %d, idx_count: %d, idx_count2: %d\n", max_cell_count, new_idx, idx_count, idx_count2);
 
 	// Step 1: Concurrent filtering of potential collision pairs
 	tbb::concurrent_vector<std::vector<CollisionPair>> tbb_local_pairs;
