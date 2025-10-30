@@ -122,7 +122,6 @@ struct CollisionPair {
 	int i, j;
 	double dist2;
 	vec2d diff;
-	bool shadowed;
 };
 
 class RarefiedGas : public Problem {

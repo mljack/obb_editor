@@ -763,24 +763,24 @@ void RarefiedGas::handle_collision() {
 					[](int idx_a, int idx_b) {return std::abs(idx_a) > std::abs(idx_b); });
 				cell.insert(it, i);
 			}
-			else {
-				// Handle large particles
-				int k = std::ceil(p.radius / grid_size);
-				for (int dy = -k; dy <= k; ++dy) {
-					for (int dx = -k; dx <= k; ++dx) {
-						int grid_x = p.grid_x + dx;
-						int grid_y = p.grid_y + dy;
-						if (grid_x >= 0 && grid_x < grid_x_count && grid_y >= 0 && grid_y < grid_y_count) {
-							int grid_xy = grid_y * grid_x_count + grid_x;
-							std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
-							auto& cell = grid[grid_xy];
-							auto it = std::lower_bound(cell.begin(), cell.end(), -i,
-								[](int idx_a, int idx_b) {return std::abs(idx_a) > std::abs(idx_b); });
-							cell.insert(it, -i);
-						}
-					}
-				}
-			}
+			//else {
+			//	// Handle large particles
+			//	int k = std::ceil(p.radius / grid_size);
+			//	for (int dy = -k; dy <= k; ++dy) {
+			//		for (int dx = -k; dx <= k; ++dx) {
+			//			int grid_x = p.grid_x + dx;
+			//			int grid_y = p.grid_y + dy;
+			//			if (grid_x >= 0 && grid_x < grid_x_count && grid_y >= 0 && grid_y < grid_y_count) {
+			//				int grid_xy = grid_y * grid_x_count + grid_x;
+			//				std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
+			//				auto& cell = grid[grid_xy];
+			//				auto it = std::lower_bound(cell.begin(), cell.end(), -i,
+			//					[](int idx_a, int idx_b) {return std::abs(idx_a) > std::abs(idx_b); });
+			//				cell.insert(it, -i);
+			//			}
+			//		}
+			//	}
+			//}
 		}
 	});
 
@@ -843,11 +843,7 @@ void RarefiedGas::handle_collision() {
 
 	for (size_t i = 0; i < grid.size(); ++i) {
 		idx_bases.push_back(new_idx);
-		for (auto& idx : grid[i]) {
-			if (idx >= 0) {
-				new_idx--;
-			}
-		}
+		new_idx -= grid[i].size();
 	}
 
 	auto tttt2 = std::chrono::high_resolution_clock::now();
@@ -858,11 +854,9 @@ void RarefiedGas::handle_collision() {
 			auto& cell = grid[i];
 			int new_idx = idx_bases[i];
 			for (auto& idx : cell) {
-				if (idx >= 0) {
-					particles[new_idx] = g_particles.at(idx);
-					idx = new_idx;
-					new_idx--;
-				}
+				particles[new_idx] = g_particles.at(idx);
+				idx = new_idx;
+				new_idx--;
 			}
 		}
 	});
@@ -922,9 +916,6 @@ void RarefiedGas::handle_collision() {
 						
 						// Check collisions with all particles in the neighboring grid cell
 						for (int j : grid[neighbor_key]) {
-							bool shadowed = (j < 0);
-							j = std::abs(j);
-
 							// Avoid checking the same pair twice (i < j)
 							if (i >= j)
 								break;
@@ -936,7 +927,7 @@ void RarefiedGas::handle_collision() {
 							
 							// Only save particle pairs that might collide (distance less than sum of radii)
 							if (dist2 <= R * R)
-								local_pairs.push_back({ i, j, dist2, diff, shadowed });
+								local_pairs.push_back({ i, j, dist2, diff });
 						}
 					}
 				}
@@ -951,6 +942,74 @@ void RarefiedGas::handle_collision() {
 		}
 	); 
 
+	// big vs grid index
+	std::vector<std::pair<int, int>> particle_grid_pairs;
+	for (int i = g_particles.size() - num_of_big_particles; i < g_particles.size(); ++i) {
+		auto& p_big = g_particles[i];
+		int k = std::ceil(p_big.radius / grid_size);
+		for (int dy = -k; dy <= k; ++dy) {
+			for (int dx = -k; dx <= k; ++dx) {
+				int grid_x = p_big.grid_x + dx;
+				int grid_y = p_big.grid_y + dy;
+				if (grid_x >= 0 && grid_x < grid_x_count && grid_y >= 0 && grid_y < grid_y_count) {
+					int grid_xy = grid_y * grid_x_count + grid_x;
+					particle_grid_pairs.emplace_back(i, grid_xy);
+				}
+			}
+		}
+	}
+
+	// big vs grid in parallel
+	tbb::parallel_for(tbb::blocked_range<int>(0, static_cast<int>(particle_grid_pairs.size())),
+		[&](const tbb::blocked_range<int>& r) {
+
+		//auto ttt1 = std::chrono::high_resolution_clock::now();
+
+			// Each thread uses its own local storage to avoid contention
+		std::vector<CollisionPair> local_pairs;
+		//local_pairs.reserve(1000); // Pre-reserve space to reduce allocations
+
+		for (int pair_idx = r.begin(); pair_idx != r.end(); ++pair_idx) {
+			int i = particle_grid_pairs[pair_idx].first;
+			int g_idx = particle_grid_pairs[pair_idx].second;
+			// Check collisions with all particles in the neighboring grid cell
+			for (int j : grid[g_idx]) {
+				// Check collision between particles i and j
+				vec2d diff = g_particles[i].pos - g_particles[j].pos;
+				double dist2 = glm::dot(diff, diff);
+				double R = g_particles[i].radius + g_particles[j].radius;
+
+				// Only save particle pairs that might collide (distance less than sum of radii)
+				if (dist2 <= R * R)
+					local_pairs.push_back({ i, j, dist2, diff });
+			}
+		}
+		if (!local_pairs.empty())
+			tbb_local_pairs.emplace_back(local_pairs);
+
+		//auto ttt2 = std::chrono::high_resolution_clock::now();
+		//double time = std::chrono::duration<double, std::milli>(tt3 - tt2).count();
+		//printf("\t%.1f\n", time);
+	}
+	);
+
+	// big vs big
+	if (tbb_local_pairs.empty())
+		tbb_local_pairs.emplace_back();
+	for (int i = g_particles.size() - num_of_big_particles; i < g_particles.size(); ++i) {
+		auto& p_big_a = g_particles[i];
+		for (int j = i + 1; j < g_particles.size(); ++j) {
+			vec2d diff = g_particles[i].pos - g_particles[j].pos;
+			double dist2 = glm::dot(diff, diff);
+			double R = g_particles[i].radius + g_particles[j].radius;
+
+			// Only save particle pairs that might collide (distance less than sum of radii)
+			if (dist2 <= R * R)
+				tbb_local_pairs.back().push_back({ i, j, dist2, diff });
+		}
+	}
+
+
 	tt2 = std::chrono::high_resolution_clock::now();
 
 	// Step 2: Sequential processing of all potential collision pairs
@@ -963,14 +1022,6 @@ void RarefiedGas::handle_collision() {
 		for (const auto& pair : pair_block) {
 			int i = pair.i;
 			int j = pair.j;
-			if (pair.shadowed) {
-				auto item = std::make_pair(i, j);
-				if (shadowed_pairs.count(item) > 0)
-					continue;
-				else {
-					shadowed_pairs.insert(item);
-				}
-			}
 
 			total_pairs++;
 			
