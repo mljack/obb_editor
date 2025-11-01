@@ -26,36 +26,38 @@ struct TrajPt {
 struct Particle {
 	Particle() {}
 	void set(double t, int id1, int color_idx1, double radius1, double mass1, const vec2d& pos1, const vec2d& vel1, const vec2d& accel1) {
-		id = id1; color_idx = color_idx1; mass = mass1;  pos = pos1;
+		id = id1; flags.color_idx = color_idx1; mass = mass1;  pos = pos1;
 		vel = vel1; accel = accel1;
 		set_radius(radius1);
+		flags.is_colliding = 0;
+		flags.show_trajectory = 0;
+		flags.is_vip = 0;
 	}
 	void set_radius(double radius1) {
 		radius = radius1;
 		g_max_particle_radius = std::max(g_max_particle_radius, radius1);
 	}
-	void set_solution(std::function<void(double, vec2d*, vec2d*, vec2d*)> s) {
-		solution = s;
-	}
 	int id;
-	int color_idx;
 	int grid_x;
 	int grid_y;
 	int grid_xy;
-	double radius;
-	double mass;
+	float radius;
+	float mass;
 	vec2d pos;
 	vec2d vel;
 	vec2d accel;
 	vec2d pos_predicted;
 	vec2d vel_predicted;
 	vec2d accel_predicted;
-	bool is_colliding = false;
-	bool show_trajectory = false;
-	bool is_vip = false;
-	std::vector<TrajPt> traj;
-	std::function<void(double, vec2d*, vec2d*, vec2d*)> solution = nullptr;
+	struct {
+		char color_idx : 4;
+		bool is_colliding : 1;
+		bool show_trajectory : 1;
+		bool is_vip : 1;
+	} flags;
 };
+
+extern std::vector<std::vector<TrajPt>> g_trajs;
 
 class Field {
 public:

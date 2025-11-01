@@ -42,6 +42,7 @@ std::vector<Particle> g_particles;  ///< Simulated particles
 std::vector<float> g_t_array, g_energy_array; ///< Energy tracking arrays
 
 std::vector<Particle> particles;
+std::vector<std::vector<TrajPt>> g_trajs;
 std::vector<int> idx_bases;
 
 double g_max_particle_radius = 0.00001;
@@ -135,10 +136,13 @@ void start_simulation(int problem_idx, std::map<int, Marker>* markers) {
 	if (g_problem)
 		g_problem->init(markers);
 
-	// Start tracking trajectories if enabled
-	for (auto& p : g_particles)
-		if (g_show_trajectories || p.show_trajectory)
-			p.traj.emplace_back(g_sim_time, p.pos);  // Record initial position
+	g_trajs.clear();
+	g_trajs.resize(g_particles.size());
+
+	//// Start tracking trajectories if enabled
+	//for (auto& p : g_particles)
+	//	if (g_show_trajectories || p.flags.show_trajectory)
+	//		g_trajs[p.id].emplace_back(g_sim_time, p.pos);  // Record initial position
 
 	g_frame_count = 0;
 }
@@ -294,8 +298,9 @@ void run_one_simulation_step(double timestep, int method_idx) {
 			for (int i = r.begin(); i < r.end(); ++i) {
 				auto& p = g_particles[i];
 				step_one_particle(timestep, method_idx, p);
-				if (g_show_trajectories || p.show_trajectory)
-					p.traj.emplace_back(g_sim_time, p.pos);
+				if (g_show_trajectories || p.flags.show_trajectory) {
+					g_trajs.at(p.id).emplace_back(g_sim_time, p.pos);
+				}
 			}
 		}
 	);
@@ -332,14 +337,9 @@ void run_one_simulation_step(double timestep, int method_idx) {
 		[&](const tbb::blocked_range<int>& r, EnergyAccumulator local_acc) {
 			for (int i = r.begin(); i < r.end(); ++i) {
 				auto& p = g_particles[i];
-				if (p.solution) {
-					p.solution(g_sim_time + timestep, &p.pos, &p.vel, &p.accel);
-				}
-				else {
-					local_acc.energy += 0.5 * p.mass * glm::dot(p.vel, p.vel);
-					for (auto& field : g_fields) {
-						local_acc.energy += field->compute_potential(p.pos) * p.mass;
-					}
+				local_acc.energy += 0.5 * p.mass * glm::dot(p.vel, p.vel);
+				for (auto& field : g_fields) {
+					local_acc.energy += field->compute_potential(p.pos) * p.mass;
 				}
 				if (isnan(local_acc.energy) && !local_acc.has_nan) {
 					local_acc.has_nan = true;
@@ -455,7 +455,7 @@ void seek_to_sim_time_moment(double t, std::map<int, Marker>* markers) {
 		if (count >= g_particles.size())
 			continue;
 		// Find the first trajectory point after the target time
-		for (auto& traj_pt : g_particles[count++].traj) {
+		for (auto& traj_pt : g_trajs[g_particles[count++].id]) {
 			if (traj_pt.t > t) {
 				m.x = traj_pt.pos.x;
 				m.y = traj_pt.pos.y;
@@ -512,16 +512,6 @@ void PlanetOrbit::init(std::map<int, Marker>* markers) {
 		g_particles[count++].set(g_sim_time, idx, /*color_idx=*/0, /*radius=*/4.0,/*mass=*/1.0, vec2d(m.x, m.y), vec2d(m.vx, m.vy), vec2d(0.0, 0.0));
 	}
 
-	// The commented code below would add an analytical solution for comparison
-	//if (!g_particles.empty()) {
-	//	Particle solution = g_particles[0];
-	//	solution.traj.clear();
-	//	solution.set_solution([](double t, vec2d* pos, vec2d* vel, vec2d* accel) {
-	//		double r = 100.0;
-	//		*pos = vec2d(800.0, -600.0) + r * vec2d(std::cos(t), std::sin(t));
-	//	});
-	//	g_particles.push_back(solution);
-	//}
 	g_num_of_big_particles = 1;
 }
 
@@ -646,30 +636,34 @@ void RarefiedGas::init(std::map<int, Marker>* markers) {
 	}
 
 	g_num_of_big_particles = 4;
-	g_particles.back().show_trajectory = true;
+	g_particles.back().flags.show_trajectory = 1;
 	Particle p;
 	p.set(g_sim_time, g_particles.size(), /*color_idx=*/1, particle_radius, /*mass=*/p.radius * p.radius * glm::pi<double>(), vec2d(center_x, center_y), vec2d(0.0, 0.0), vec2d(0.0, 0.0));
-	p.is_vip = true;
+	p.flags.is_vip = 1;
 	p.radius = 20.0;
-	p.show_trajectory = true;
+	p.flags.show_trajectory = 1;
 
 	double air_ratio = 0.1;
 
+	p.id = g_particles.size();
 	p.pos.x = center_x - 150.0;
 	p.pos.y = center_y + 50.0;
 	p.mass = p.radius * p.radius * glm::pi<double>() * air_ratio * 0.01;
 	g_particles.push_back(p);
 
+	p.id = g_particles.size();
 	p.pos.x = center_x - 70.0;
 	p.pos.y = center_y + 50.0;
 	p.mass = p.radius * p.radius * glm::pi<double>() * air_ratio * 0.1;
 	g_particles.push_back(p);
 
+	p.id = g_particles.size();
 	p.pos.x = center_x + 70.0;
 	p.pos.y = center_y + 50.0;
 	p.mass = p.radius * p.radius * glm::pi<double>() * air_ratio * 0.5;
 	g_particles.push_back(p);
 
+	p.id = g_particles.size();
 	p.pos.x = center_x + 150.0;
 	p.pos.y = center_y + 50.0;
 	p.mass = p.radius * p.radius * glm::pi<double>() * air_ratio * 1.0;
@@ -690,12 +684,12 @@ void RarefiedGas::handle_boundary() {
 				// Left and right walls - reflect x-velocity
 				if ((p.pos.x < container_min_x + p.radius && p.vel.x < 0.0) || (p.pos.x > container_max_x - p.radius && p.vel.x > 0.0)) {
 					p.vel.x *= -1;
-					p.is_colliding = true;
+					p.flags.is_colliding = 1;
 				}
 				// Bottom and top walls - reflect y-velocity
 				if ((p.pos.y < container_min_y + p.radius && p.vel.y < 0.0) || (p.pos.y > container_max_y - p.radius && p.vel.y > 0.0)) {
 					p.vel.y *= -1;
-					p.is_colliding = true;
+					p.flags.is_colliding = 1;
 				}
 
 				if (p.pos.x > wall_min_x - p.radius && p.pos.x < wall_max_x + p.radius && (p.pos.y < hole_min_y + p.radius || p.pos.y > hole_max_y - p.radius)) {
@@ -708,7 +702,7 @@ void RarefiedGas::handle_boundary() {
 						if ((p.pos.y < hole_min_y + p.radius && p.vel.y < 0.0) || (p.pos.y > hole_max_y - p.radius && p.vel.y > 0.0))
 							p.vel.y *= -1;
 					}
-					p.is_colliding = true;
+					p.flags.is_colliding = 1;
 				}
 			}
 		}
@@ -762,7 +756,7 @@ void RarefiedGas::handle_collision() {
 		[this, &get_grid_xy, grid_x_count, grid_y_count, grid_size, &m](const tbb::blocked_range<int>& r) {
 		for (int i = r.begin(); i < r.end(); ++i) {
 			auto& p = g_particles[i];
-			p.is_colliding = false;
+			p.flags.is_colliding = 0;
 			get_grid_xy(p.pos.x, p.pos.y, &p.grid_x, &p.grid_y);
 			p.grid_xy = p.grid_y * grid_x_count + p.grid_x;
 			if (p.radius <= g_max_particle_radius) {
@@ -1050,8 +1044,8 @@ void RarefiedGas::handle_collision() {
 				continue;
 			
 			// Set collision flags
-			g_particles[i].is_colliding = true;
-			g_particles[j].is_colliding = true;
+			g_particles[i].flags.is_colliding = 1;
+			g_particles[j].flags.is_colliding = 1;
 			
 			// Get particle masses
 			double m1 = g_particles[i].mass;

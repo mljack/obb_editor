@@ -812,7 +812,7 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 	std::vector<glm::dvec2> pts(n);
 	for (int i = 0; i < n; ++i) {
 		double a = glm::pi<double>() * 2 * i / n;
-		pts[i] = particles[0].radius * glm::dvec2(std::cos(a), std::sin(a));
+		pts[i] = static_cast<double>(particles[0].radius) * glm::dvec2(std::cos(a), std::sin(a));
 	}
 
 	tbb::parallel_for(tbb::blocked_range<int>(0, static_cast<int>(g_particles.size() - g_num_of_big_particles) / step / 2),
@@ -829,23 +829,23 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 					(*v_buf)[vbuf_base_idx + 0] = pt.x;
 					(*v_buf)[vbuf_base_idx + 1] = g_image_height - pt.y;
 					(*v_buf)[vbuf_base_idx + 2] = z;
-					if (p.is_colliding) {
+					if (p.flags.is_colliding) {
 						(*v_buf)[vbuf_base_idx + 3] = green.x;
 						(*v_buf)[vbuf_base_idx + 4] = green.y;
 						(*v_buf)[vbuf_base_idx + 5] = green.z;
 						(*v_buf)[vbuf_base_idx + 6] = 1.0f;
 					}
 					else {
-						(*v_buf)[vbuf_base_idx + 3] = c[p.color_idx].x;
-						(*v_buf)[vbuf_base_idx + 4] = c[p.color_idx].y;
-						(*v_buf)[vbuf_base_idx + 5] = c[p.color_idx].z;
+						(*v_buf)[vbuf_base_idx + 3] = c[p.flags.color_idx].x;
+						(*v_buf)[vbuf_base_idx + 4] = c[p.flags.color_idx].y;
+						(*v_buf)[vbuf_base_idx + 5] = c[p.flags.color_idx].z;
 						(*v_buf)[vbuf_base_idx + 6] = 1.0f;
 					}
 					(*idx_buf)[idx_buf_base_idx + 0] = vbuf_base_idx / 7;
 					(*idx_buf)[idx_buf_base_idx + 1] = vbuf_base_idx / 7 - i + (i + 1) % n;
 				}
 
-				if (g_show_trajectories || p.show_trajectory)
+				if (g_show_trajectories || p.flags.show_trajectory)
 					traj_particles.push_back(idx + j);
 			}
 		}
@@ -859,35 +859,36 @@ void build_particles_buffer(const std::vector<Particle>& particles, std::vector<
 		int n = std::max(4, static_cast<int>(std::round(p.radius)));
 		for (int i = 0; i < n; ++i) {
 			double a = glm::pi<double>() * 2 * i / n;
-			pts.push_back(p.pos + p.radius * glm::dvec2(std::cos(a), std::sin(a)));
+			pts.push_back(p.pos + static_cast<double>(p.radius) * glm::dvec2(std::cos(a), std::sin(a)));
 			idx_buf->push_back(base_idx + i % n); idx_buf->push_back(base_idx + (i + 1) % n);
 		}
 		for (auto& pt : pts) {
 			v_buf->push_back(pt.x);
 			v_buf->push_back(g_image_height - pt.y);
 			v_buf->push_back(z);
-			if (p.is_colliding) {
+			if (p.flags.is_colliding) {
 				v_buf->push_back(green.x); v_buf->push_back(green.y); v_buf->push_back(green.z); v_buf->push_back(1.0f);
 			}
 			else {
-				v_buf->push_back(c[p.color_idx].x); v_buf->push_back(c[p.color_idx].y); v_buf->push_back(c[p.color_idx].z); v_buf->push_back(1.0f);
+				v_buf->push_back(c[p.flags.color_idx].x); v_buf->push_back(c[p.flags.color_idx].y); v_buf->push_back(c[p.flags.color_idx].z); v_buf->push_back(1.0f);
 			}
 		}
 
-		if (g_show_trajectories || p.show_trajectory)
+		if (g_show_trajectories || p.flags.show_trajectory)
 			traj_particles.push_back(idx);
 	}
 
 	for(int idx : traj_particles) {
 		auto& p = particles[idx];
+		auto& traj = g_trajs[p.id];
 
 		GLuint base_idx2 = (GLuint)v_buf->size() / 7;
-		for (size_t i = 0; i < p.traj.size(); ++i) {
-			auto& pt = p.traj[i].pos;
+		for (size_t i = 0; i < traj.size(); ++i) {
+			auto& pt = traj[i].pos;
 			v_buf->push_back(pt.x);
 			v_buf->push_back(g_image_height - pt.y);
 			v_buf->push_back(z);
-			v_buf->push_back(c[p.color_idx].x); v_buf->push_back(c[p.color_idx].y); v_buf->push_back(c[p.color_idx].z); v_buf->push_back(1.0f);
+			v_buf->push_back(c[p.flags.color_idx].x); v_buf->push_back(c[p.flags.color_idx].y); v_buf->push_back(c[p.flags.color_idx].z); v_buf->push_back(1.0f);
 			if (i > 0) {
 				idx_buf->push_back(base_idx2 + i - 1); idx_buf->push_back(base_idx2 + i);
 			}

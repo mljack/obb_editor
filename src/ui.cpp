@@ -387,7 +387,7 @@ void render_simulation_settings() {
 		ImGui::Checkbox("Show Trajectories", &g_show_trajectories);
 		if (g_show_trajectories_old != g_show_trajectories && !g_show_trajectories) {
 			for (auto& p : g_particles)
-				p.traj.clear();
+				g_trajs[p.id].clear();
 		}
 		ImGui::SameLine();
 		ImGui::Checkbox("Show Statistics", &g_show_stats);
