@@ -40,15 +40,11 @@ struct Particle {
 	int id;
 	int grid_x;
 	int grid_y;
-	int grid_xy;
 	float radius;
 	float mass;
 	vec2d pos;
 	vec2d vel;
 	vec2d accel;
-	vec2d pos_predicted;
-	vec2d vel_predicted;
-	vec2d accel_predicted;
 	struct {
 		char color_idx : 4;
 		bool is_colliding : 1;

@@ -187,66 +187,68 @@ void step_one_particle(double timestep, int method_idx, Particle& p) {
 	}
 	else if (method_idx == 1) { 	// Backward Euler method (implicit)
 		// Initial prediction
-		p.pos_predicted = p.pos + timestep * p.vel;
-		p.vel_predicted = p.vel + timestep * p.accel;
+		auto pos_predicted = p.pos + timestep * p.vel;
+		auto vel_predicted = p.vel + timestep * p.accel;
 
+		vec2d accel_predicted;
 		// Newton-Raphson iteration to solve implicit equations
 		for (int i = 0; i < 10; ++i) {
 			// Calculate accelerations at predicted state
-			p.accel_predicted = vec2d(0.0, 0.0);
+			accel_predicted = vec2d(0.0, 0.0);
 			for (auto& field : g_fields) {
-				p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
+				accel_predicted += field->compute_accel(pos_predicted, vel_predicted);
 			}
 
 			// Refine predictions
 			for (auto& p : g_particles) {
-				p.pos_predicted = p.pos + timestep * p.vel_predicted;
-				p.vel_predicted = p.vel + timestep * p.accel_predicted;
+				pos_predicted = p.pos + timestep * vel_predicted;
+				vel_predicted = p.vel + timestep * accel_predicted;
 			}
 		}
 
 		// Apply the final predictions
-		p.pos += timestep * p.vel_predicted;
-		p.vel += timestep * p.accel_predicted;
+		p.pos += timestep * vel_predicted;
+		p.vel += timestep * accel_predicted;
 	}
 	else if (method_idx == 2) {	// Implicit Trapezoid method
 		// Initial prediction
-		p.pos_predicted = p.pos + timestep * p.vel;
-		p.vel_predicted = p.vel + timestep * p.accel;
+		auto pos_predicted = p.pos + timestep * p.vel;
+		auto vel_predicted = p.vel + timestep * p.accel;
+		vec2d accel_predicted;
 
 		// Iterative solution for implicit equations
 		for (int i = 0; i < 10; ++i) {
 			// Calculate accelerations at predicted state
-			p.accel_predicted = vec2d(0.0, 0.0);
+			accel_predicted = vec2d(0.0, 0.0);
 			for (auto& field : g_fields) {
-				p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
+				accel_predicted += field->compute_accel(pos_predicted, vel_predicted);
 			}
 
 			// Refine predictions
 			for (auto& p : g_particles) {
-				p.pos_predicted = p.pos + timestep * p.vel_predicted;
-				p.vel_predicted = p.vel + timestep * p.accel_predicted;
+				pos_predicted = p.pos + timestep * vel_predicted;
+				vel_predicted = p.vel + timestep * accel_predicted;
 			}
 		}
 
 		// Apply trapezoidal update using average of current and predicted
-		p.pos += timestep * 0.5 * (p.vel + p.vel_predicted);
-		p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+		p.pos += timestep * 0.5 * (p.vel + vel_predicted);
+		p.vel += timestep * 0.5 * (p.accel + accel_predicted);
 	}
 	else if (method_idx == 3) {	// Explicit Trapezoid method
 		// Predict new state using Euler
-		p.pos_predicted = p.pos + timestep * p.vel;
-		p.vel_predicted = p.vel + timestep * p.accel;
+		auto pos_predicted = p.pos + timestep * p.vel;
+		auto vel_predicted = p.vel + timestep * p.accel;
 
 		// Calculate acceleration at predicted state
-		p.accel_predicted = vec2d(0.0, 0.0);
+		auto accel_predicted = vec2d(0.0, 0.0);
 		for (auto& field : g_fields) {
-			p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
+			accel_predicted += field->compute_accel(pos_predicted, vel_predicted);
 		}
 
 		// Apply trapezoidal update (no iteration)
-		p.pos += timestep * 0.5 * (p.vel + p.vel_predicted);
-		p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+		p.pos += timestep * 0.5 * (p.vel + vel_predicted);
+		p.vel += timestep * 0.5 * (p.accel + accel_predicted);
 	}
 	else if (method_idx == 4) {	// Taylor series method (2nd order)
 		// Update using Taylor expansion to 2nd order
@@ -255,32 +257,32 @@ void step_one_particle(double timestep, int method_idx, Particle& p) {
 	}
 	else if (method_idx == 5) {	// Combined Taylor + Explicit Trapezoid method
 		// Initial prediction using Taylor method
-		p.pos_predicted = p.pos + timestep * (p.vel + 0.5 * timestep * p.accel);
-		p.vel_predicted = p.vel + timestep * p.accel;
+		auto pos_predicted = p.pos + timestep * (p.vel + 0.5 * timestep * p.accel);
+		auto vel_predicted = p.vel + timestep * p.accel;
 
 		// Calculate acceleration at predicted state
-		p.accel_predicted = vec2d(0.0, 0.0);
+		vec2d accel_predicted(0.0, 0.0);
 		for (auto& field : g_fields) {
-			p.accel_predicted += field->compute_accel(p.pos_predicted, p.vel_predicted);
+			accel_predicted += field->compute_accel(pos_predicted, vel_predicted);
 		}
 
 		// Apply combined update
-		p.pos += timestep * (p.vel + 0.25 * timestep * (p.accel + p.accel_predicted));
-		p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+		p.pos += timestep * (p.vel + 0.25 * timestep * (p.accel + accel_predicted));
+		p.vel += timestep * 0.5 * (p.accel + accel_predicted);
 	}
 	else if (method_idx == 6) {	// Velocity Verlet method
 		// Update position and predict velocity
 		p.pos += timestep * (p.vel + 0.5 * timestep * p.accel);
-		p.vel_predicted = p.vel + timestep * p.accel;
+		auto vel_predicted = p.vel + timestep * p.accel;
 
 		// Calculate new acceleration at updated position
-		p.accel_predicted = vec2d(0.0, 0.0);
+		vec2d accel_predicted(0.0, 0.0);
 		for (auto& field : g_fields) {
-			p.accel_predicted += field->compute_accel(p.pos, p.vel_predicted);
+			accel_predicted += field->compute_accel(p.pos, vel_predicted);
 		}
 
 		// Correct velocity using average acceleration
-		p.vel += timestep * 0.5 * (p.accel + p.accel_predicted);
+		p.vel += timestep * 0.5 * (p.accel + accel_predicted);
 	}
 }
 
@@ -758,10 +760,10 @@ void RarefiedGas::handle_collision() {
 			auto& p = g_particles[i];
 			p.flags.is_colliding = 0;
 			get_grid_xy(p.pos.x, p.pos.y, &p.grid_x, &p.grid_y);
-			p.grid_xy = p.grid_y * grid_x_count + p.grid_x;
+			int grid_xy = p.grid_y * grid_x_count + p.grid_x;
 			if (p.radius <= g_max_particle_radius) {
-				std::lock_guard<std::mutex> lock(m[p.grid_xy % m.size()]);
-				auto& cell = grid[p.grid_xy];
+				std::lock_guard<std::mutex> lock(m[grid_xy % m.size()]);
+				auto& cell = grid[grid_xy];
 				auto it = std::lower_bound(cell.begin(), cell.end(), i,
 					[](int idx_a, int idx_b) {return std::abs(idx_a) > std::abs(idx_b); });
 				cell.insert(it, i);
