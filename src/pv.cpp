@@ -8,6 +8,7 @@
  */
 
 #include "pv.h"
+#include "space_filling_curve.h"
 
 /* Physics Vector */
 
@@ -714,28 +715,6 @@ void RarefiedGas::handle_boundary() {
 	);
 }
 
-inline int next_power_of_two(int x, int* bits) {
-	int xx = x - 1;
-	*bits = 0;
-	int v = 1;
-	while (xx > 0) {
-		(*bits)++;
-		v <<= 1;
-		xx >>= 1;
-	}
-	return v;
-}
-
-inline void z_order_to_2d(int z, int m_n, int* x, int* y) {
-	*x = 0;
-	*y = 0;
-
-	for (int k = 0; k < m_n; ++k) {
-		*x |= ((z >> (2 * k)) & 1) << k;
-		*y |= ((z >> (2 * k + 1)) & 1) << k;
-	}
-}
-
 /**
 	* @brief Handles collisions between gas particles
 	* 
@@ -798,17 +777,25 @@ void RarefiedGas::handle_collision() {
 
 #if 1
 	// Init Z-order curve indices
-	if (z_order_curve_xy.empty()) {
+	if (order_curve_xy.empty()) {
+
+#if 0
 		int x_bits, y_bits;
 		int grid_x_count2 = next_power_of_two(grid_x_count, &x_bits);
 		int grid_y_count2 = next_power_of_two(grid_y_count, &y_bits);
+		int mm = std::max(grid_x_count2, grid_y_count2);
+		mm *= mm;
 		int m = std::max(x_bits, y_bits);
-		for (int z = 0; z < grid_x_count2*grid_y_count2; ++z) {
+		for (int z = 0; z < mm; ++z) {
 			int xx, yy;
-			z_order_to_2d(z, m, &xx, &yy);
+			hilbert_inverse(z, m, &xx, &yy);
+			//z_order_to_2d(z, m, &xx, &yy);
 			if (xx < grid_x_count && yy < grid_y_count)
-				z_order_curve_xy.push_back(yy * grid_x_count + xx);
+				order_curve_xy.push_back(yy * grid_y_count + xx);
 		}
+#else
+		gilbert2d(grid_x_count, grid_y_count, &order_curve_xy);
+#endif
 	}
 
 	// Reorder small particles every 10 frames
@@ -827,7 +814,7 @@ void RarefiedGas::handle_collision() {
 		// Calculate index base for each cell
 		idx_bases.clear();
 		idx_bases.reserve(grid.size());
-		for (int grid_xy : z_order_curve_xy) {
+		for (int grid_xy : order_curve_xy) {
 			idx_bases.push_back(new_idx);
 			new_idx -= grid[grid_xy].size();
 		}
@@ -835,10 +822,10 @@ void RarefiedGas::handle_collision() {
 		auto tttt2 = std::chrono::high_resolution_clock::now();
 
 		// Reorder small particles with multi-threading
-		tbb::parallel_for(tbb::blocked_range<int>(0, (int)z_order_curve_xy.size()),
+		tbb::parallel_for(tbb::blocked_range<int>(0, (int)order_curve_xy.size()),
 			[this](const tbb::blocked_range<int>& r) {
 			for (int i = r.begin(); i < r.end(); ++i) {
-				int grid_xy = z_order_curve_xy[i];
+				int grid_xy = order_curve_xy[i];
 				int new_idx = idx_bases[i];
 				for (auto& idx : grid[grid_xy]) {
 					particles[new_idx] = g_particles[idx];

@@ -71,6 +71,7 @@ set(HEADERS
 	src/pv.h
 	src/pwx.h
 	src/shaders.h
+	src/space_filling_curve.h
 	src/texture.h
 	src/ui.h
 )

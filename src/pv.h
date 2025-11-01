@@ -144,7 +144,7 @@ private:
 	double hole_min_y;
 	double hole_max_y;
 	std::vector<std::vector<int>> grid;
-	std::vector<int> z_order_curve_xy;
+	std::vector<int> order_curve_xy;
 	std::vector<std::vector<CollisionPair>> thread_collision_pairs;
 };
 
